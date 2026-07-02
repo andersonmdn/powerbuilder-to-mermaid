@@ -247,11 +247,6 @@ class PBParser {
 
   /** Parses type variables...end variables for instance variable declarations. */
   _processTypeVariables(text, objectMap) {
-    // We need to figure out which object these variables belong to.
-    // They appear right after the type decl block, so we attribute them to the
-    // last registered object by checking which object was most recently seen.
-    // Since the state machine processes in order, this heuristic works for
-    // standard PB source layout.
     const lastObj = this._getLastObject(objectMap);
     if (!lastObj) return;
 
@@ -260,6 +255,7 @@ class PBParser {
       const trimmed = line.trim();
       if (!trimmed) continue;
 
+      // Pure access section separator: "protected:" or "protected" alone
       const accessMatch = trimmed.match(/^(public|protected|private)\s*:?\s*$/i);
       if (accessMatch) {
         currentAccess = accessMatch[1].toLowerCase();
@@ -268,6 +264,8 @@ class PBParser {
 
       const variable = this._parseVariableLine(trimmed, currentAccess);
       if (variable) {
+        // Sync currentAccess with inline modifier so subsequent bare lines inherit it
+        currentAccess = variable.access;
         lastObj.variables.push(variable);
       }
     }
@@ -380,21 +378,37 @@ class PBParser {
 
   /** Parses a variable declaration line given the current access modifier. */
   _parseVariableLine(line, access) {
-    // Skip access modifier labels
     if (/^(public|protected|private)\s*:?\s*$/i.test(line)) return null;
-    // Skip comments
     if (line.startsWith('//')) return null;
 
-    // e.g. "integer ii_count" or "string is_name[]" or "w_object lo_ref"
-    const match = line.match(/^(\w+)\s+(\w+)(\[\d*\])?\s*(?:=.*)?$/i);
+    let rest = line;
+    let resolvedAccess = access;
+
+    // Strip leading access and sub-access modifier words.
+    // Main: public, protected, private
+    // Sub: privateread, protectedread, systemread, privatewrite, protectedwrite, systemwrite
+    const modRe = /^(public|protected|private|privateread|protectedread|systemread|privatewrite|protectedwrite|systemwrite)\s+/i;
+    let found;
+    while ((found = rest.match(modRe))) {
+      const w = found[1].toLowerCase();
+      if (w === 'public' || w === 'protected' || w === 'private') {
+        resolvedAccess = w;
+      }
+      rest = rest.slice(found[0].length);
+    }
+
+    // Remaining: "typeName name" or "typeName[] name" or "typeName name[]" with optional "= value"
+    const match = rest.match(/^(\w+(?:\[\])?)\s+(\w+)(\[\])?\s*(?:=.*)?$/i);
     if (!match) return null;
 
-    const [, typeName, name, arrayBrackets] = match;
+    const [, rawType, name, bracketOnName] = match;
+    const isArray = rawType.endsWith('[]') || !!bracketOnName;
+
     return {
-      access,
-      typeName,
+      access: resolvedAccess,
+      typeName: rawType.replace('[]', ''),
       name,
-      isArray: !!arrayBrackets,
+      isArray,
     };
   }
 
@@ -489,13 +503,30 @@ class PBParser {
     if (!body) return [];
 
     const sites = [];
-    const stripped = this._stripComments(body);
+    // Strip string literals first, then comments, so we don't match inside strings
+    const stripped = this._stripComments(this._stripStringLiterals(body));
 
-    // dotcall: identifier.identifier(
-    const dotRe = /\b(\w+)\.(\w+)\s*\(/g;
     let m;
-    while ((m = dotRe.exec(stripped)) !== null) {
+
+    // Cross-object TriggerEvent / PostEvent: "obj.TriggerEvent("event")"
+    // Must run BEFORE dotcall loop to avoid double-counting
+    const crossTrigRe = /\b(\w+)\.(TriggerEvent|PostEvent)\s*\(\s*["'](\w+)["']/gi;
+    while ((m = crossTrigRe.exec(stripped)) !== null) {
       if (!this._isBuiltinIdentifier(m[1])) {
+        sites.push({
+          kind: m[2].toLowerCase(),   // 'triggerevent' or 'postevent'
+          targetObject: m[1],
+          targetMember: m[3],
+          rawText: m[0],
+        });
+      }
+    }
+
+    // dotcall: identifier.identifier( — skip TriggerEvent/PostEvent (handled above)
+    const dotRe = /\b(\w+)\.(\w+)\s*\(/g;
+    while ((m = dotRe.exec(stripped)) !== null) {
+      if (!this._isBuiltinIdentifier(m[1]) &&
+          !/^(TriggerEvent|PostEvent)$/i.test(m[2])) {
         sites.push({
           kind: 'dotcall',
           targetObject: m[1],
@@ -505,9 +536,9 @@ class PBParser {
       }
     }
 
-    // TriggerEvent / PostEvent with string literal
-    const triggerRe = /\b(TriggerEvent|PostEvent)\s*\(\s*["'](\w+)["']/gi;
-    while ((m = triggerRe.exec(stripped)) !== null) {
+    // Self TriggerEvent / PostEvent (no object prefix): "TriggerEvent("event")"
+    const selfTrigRe = /(?<![.\w])(TriggerEvent|PostEvent)\s*\(\s*["'](\w+)["']/gi;
+    while ((m = selfTrigRe.exec(stripped)) !== null) {
       sites.push({
         kind: m[1].toLowerCase(),
         targetObject: null, // self
@@ -628,9 +659,14 @@ class PBParser {
       .replace(/\r/g, '\n');
   }
 
-  /** Removes // line comments from code body (not from strings — simple heuristic). */
+  /** Removes // line comments from code body. */
   _stripComments(text) {
     return text.replace(/\/\/.*$/gm, '');
+  }
+
+  /** Blanks out string literal content so regexes don't match inside strings. */
+  _stripStringLiterals(text) {
+    return text.replace(/"[^"\n]*"/g, match => '"' + ' '.repeat(match.length - 2) + '"');
   }
 
   _inferObjectType(parentName) {

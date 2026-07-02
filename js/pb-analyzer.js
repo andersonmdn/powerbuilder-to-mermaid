@@ -141,7 +141,14 @@ class PBAnalyzer {
 
   _resolveFromMember(callSites, fromObject, fromMember, objectMap, crossCalls, unresolved) {
     for (const site of callSites) {
-      if (site.kind === 'dotcall' && site.targetObject) {
+      const hasCrossTarget =
+        (site.kind === 'dotcall' ||
+         site.kind === 'call' ||
+         site.kind === 'triggerevent' ||
+         site.kind === 'postevent') &&
+        site.targetObject;
+
+      if (hasCrossTarget) {
         const targetKey = site.targetObject.toLowerCase();
         if (objectMap.has(targetKey)) {
           crossCalls.push({
@@ -154,26 +161,8 @@ class PBAnalyzer {
         } else {
           unresolved.push({ fromObject, fromMember, ...site });
         }
-        continue;
       }
-
-      if (site.kind === 'call' && site.targetObject) {
-        const targetKey = site.targetObject.toLowerCase();
-        if (objectMap.has(targetKey)) {
-          crossCalls.push({
-            fromObject,
-            fromMember,
-            toObject: objectMap.get(targetKey).name,
-            toMember: site.targetMember,
-            callSite: site,
-          });
-        } else {
-          unresolved.push({ fromObject, fromMember, ...site });
-        }
-        continue;
-      }
-
-      // TriggerEvent / PostEvent with no explicit target object → self-call, skip
+      // TriggerEvent / PostEvent with no explicit target → self-call, skip
     }
   }
 
