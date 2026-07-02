@@ -1,0 +1,29 @@
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# Editors
+.vscode/
+.idea/
+*.suo
+*.user
+*.swp
+*~
+
+# PowerBuilder source files (não commitar dados da empresa)
+*.sru
+*.srw
+*.srm
+*.srp
+*.srd
+*.srq
+*.srf
+*.pbl
+*.pbd
+
+# Diagramas gerados
+*.mmd
+*.svg
+*.png

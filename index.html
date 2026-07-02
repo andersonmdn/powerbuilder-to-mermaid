@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PB → Mermaid</title>
+  <link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+  <div class="page-wrapper">
+
+    <header>
+      <h1>PowerBuilder → Mermaid</h1>
+      <p>Analisa arquivos EditSource (.sru, .srw, .srm, .srp) e gera diagrama de classes Mermaid.</p>
+    </header>
+
+    <!-- ── Arquivos ──────────────────────────────────────────────────────── -->
+    <div class="card">
+      <h2>1 · Arquivos</h2>
+
+      <div id="drop-zone" role="button" aria-label="Zona de arrastar arquivos">
+        <span class="drop-icon">📂</span>
+        <div>Arraste arquivos aqui ou clique para selecionar</div>
+        <div class="drop-hint">.sru · .srw · .srm · .srp · .srd — múltiplos arquivos permitidos</div>
+      </div>
+
+      <input type="file" id="file-input" multiple
+             accept=".sru,.srw,.srm,.srp,.srd,.txt">
+
+      <div id="file-list"></div>
+    </div>
+
+    <!-- ── Opções ─────────────────────────────────────────────────────────── -->
+    <div class="card">
+      <h2>2 · Opções do diagrama</h2>
+      <div class="options-grid">
+        <label class="option-item">
+          <input type="checkbox" id="opt-functions" checked>
+          Funções e Subroutines
+        </label>
+        <label class="option-item">
+          <input type="checkbox" id="opt-events" checked>
+          Eventos
+        </label>
+        <label class="option-item">
+          <input type="checkbox" id="opt-variables">
+          Variáveis de instância
+        </label>
+        <label class="option-item">
+          <input type="checkbox" id="opt-controls" checked>
+          Controles (containment)
+        </label>
+        <label class="option-item">
+          <input type="checkbox" id="opt-calls" checked>
+          Chamadas cross-objeto
+        </label>
+        <label class="option-item">
+          <input type="checkbox" id="opt-builtins">
+          Herança de tipos built-in PB
+        </label>
+      </div>
+    </div>
+
+    <!-- ── Gerar ──────────────────────────────────────────────────────────── -->
+    <div class="card">
+      <div class="action-row">
+        <button class="btn-primary" id="btn-generate" disabled>
+          Analisar e Gerar Diagrama
+        </button>
+        <div id="status-bar" class="status-bar"></div>
+      </div>
+    </div>
+
+    <!-- ── Resultados ─────────────────────────────────────────────────────── -->
+    <div class="card" id="results-section">
+      <div class="tab-bar">
+        <button class="tab-btn active" data-tab="mermaid">Mermaid (.mmd)</button>
+        <button class="tab-btn" data-tab="preview">Preview</button>
+        <button class="tab-btn" data-tab="objects">Objetos</button>
+      </div>
+
+      <!-- Mermaid text -->
+      <div class="tab-panel" data-tab="mermaid" style="display:block">
+        <div class="output-toolbar">
+          <button class="btn-secondary" id="btn-copy">Copiar</button>
+          <button class="btn-secondary" id="btn-download">Baixar .mmd</button>
+        </div>
+        <pre id="mermaid-output"></pre>
+      </div>
+
+      <!-- Preview -->
+      <div class="tab-panel" data-tab="preview">
+        <div id="preview-container">
+          <p class="info-msg">Clique na aba Preview para renderizar o diagrama.</p>
+        </div>
+      </div>
+
+      <!-- Objects table -->
+      <div class="tab-panel" data-tab="objects">
+        <div id="objects-container">
+          <p class="info-msg">Gere o diagrama para ver a lista de objetos.</p>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /page-wrapper -->
+
+  <!-- Scripts: CDN Mermaid primeiro, depois módulos da aplicação -->
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+  <script src="js/pb-parser.js"></script>
+  <script src="js/pb-analyzer.js"></script>
+  <script src="js/mermaid-gen.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
