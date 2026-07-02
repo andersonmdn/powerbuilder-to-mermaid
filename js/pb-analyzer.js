@@ -132,11 +132,13 @@ class PBAnalyzer {
     const unresolvedCalls = [];
 
     for (const obj of objectMap.values()) {
+      const varTypeMap = this._buildVarTypeMap(obj);
+
       // Resolve from function bodies
       for (const func of obj.functions) {
         this._resolveFromMember(
           func.callSites, obj.name, func.name,
-          objectMap, crossObjectCalls, unresolvedCalls
+          objectMap, varTypeMap, crossObjectCalls, unresolvedCalls
         );
       }
 
@@ -145,7 +147,7 @@ class PBAnalyzer {
         if (!event.body) continue;
         this._resolveFromMember(
           event.callSites, obj.name, event.name,
-          objectMap, crossObjectCalls, unresolvedCalls
+          objectMap, varTypeMap, crossObjectCalls, unresolvedCalls
         );
       }
     }
@@ -157,7 +159,23 @@ class PBAnalyzer {
     return { crossObjectCalls, unresolvedCalls };
   }
 
-  _resolveFromMember(callSites, fromObject, fromMember, objectMap, crossCalls, unresolved) {
+  /**
+   * Builds a map from variable/control instance name → type name for a given object.
+   * Used to resolve call sites where the code uses a variable name (e.g. `iu_service`)
+   * instead of the class name (e.g. `u_retrieve_dados`).
+   */
+  _buildVarTypeMap(obj) {
+    const map = new Map();
+    for (const v of obj.variables) {
+      map.set(v.name.toLowerCase(), v.typeName.toLowerCase());
+    }
+    for (const c of obj.controls) {
+      map.set(c.name.toLowerCase(), c.typeName.toLowerCase());
+    }
+    return map;
+  }
+
+  _resolveFromMember(callSites, fromObject, fromMember, objectMap, varTypeMap, crossCalls, unresolved) {
     for (const site of callSites) {
       const hasCrossTarget =
         (site.kind === 'dotcall' ||
@@ -168,11 +186,19 @@ class PBAnalyzer {
 
       if (hasCrossTarget) {
         const targetKey = site.targetObject.toLowerCase();
-        if (objectMap.has(targetKey)) {
+        // Step 1: direct lookup by object/control name
+        let resolvedObj = objectMap.get(targetKey);
+        // Step 2: resolve via instance variable type (e.g. iu_service → u_retrieve_dados)
+        if (!resolvedObj) {
+          const varType = varTypeMap.get(targetKey);
+          if (varType) resolvedObj = objectMap.get(varType);
+        }
+
+        if (resolvedObj) {
           crossCalls.push({
             fromObject,
             fromMember,
-            toObject: objectMap.get(targetKey).name,
+            toObject: resolvedObj.name,
             toMember: site.targetMember,
             callSite: site,
           });
