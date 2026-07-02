@@ -389,6 +389,13 @@ class PBParser {
       return { name, returnType, params: this._parseParamList(rawParams) };
     }
 
+    // Event with parens (no "type" keyword): "event hide_dados()" / "event hide_dados ( )" / "event hide_dados();"
+    const parenMatch = line.match(/^event\s+(\w+)\s*\(([^)]*)\)\s*;?$/i);
+    if (parenMatch) {
+      const [, name, rawParams] = parenMatch;
+      return { name, returnType: null, params: this._parseParamList(rawParams.trim()) };
+    }
+
     // Simple event with optional trailing params: "event ue_custom;" or "event ue_custom;string as_arg"
     const simpleMatch = line.match(/^event\s+(\w+)\s*;(.*)$/i);
     if (simpleMatch) {
@@ -473,10 +480,17 @@ class PBParser {
    * Parses an "on obj.event" or "on obj.event;params" header line.
    */
   _parseEventHeader(line) {
-    // With params after semicolon: "on w_main.ue_custom;string as_arg"
-    const withParams = line.match(/^on\s+(\w+)\.(\w+)\s*;(.+)$/i);
+    // With params after semicolon: "on w_main.ue_custom;string as_arg" or bare "on w_main.ue_custom;"
+    const withParams = line.match(/^on\s+(\w+)\.(\w+)\s*;(.*)$/i);
     if (withParams) {
       const [, ownerName, name, rawParams] = withParams;
+      return { ownerName, name, params: this._parseParamList(rawParams.trim()) };
+    }
+
+    // With parens: "on w_main.ue_custom()" / "on w_main.ue_custom(string as_arg)" / "on w_main.ue_custom();"
+    const withParens = line.match(/^on\s+(\w+)\.(\w+)\s*\(([^)]*)\)\s*;?$/i);
+    if (withParens) {
+      const [, ownerName, name, rawParams] = withParens;
       return { ownerName, name, params: this._parseParamList(rawParams.trim()) };
     }
 
