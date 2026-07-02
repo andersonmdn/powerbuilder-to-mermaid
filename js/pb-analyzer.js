@@ -188,23 +188,31 @@ class PBAnalyzer {
          site.kind === 'postevent') &&
         site.targetObject;
 
-      // Bare self-call: funcName( without dot — resolve against current object's functions
+      // Bare self-call: funcName( without dot — resolve against current object AND ancestors
       if (site.kind === 'barecall') {
         const ownerObj = objectMap.get(fromObject.toLowerCase());
         if (ownerObj) {
-          const hasFunc =
-            ownerObj.functions.some(f => f.name.toLowerCase() === site.targetMember.toLowerCase()) ||
-            ownerObj.prototypes.some(p => p.name.toLowerCase() === site.targetMember.toLowerCase());
-          if (hasFunc) {
-            crossCalls.push({
-              fromObject,
-              fromMember,
-              toObject: fromObject,  // self-loop
-              toMember: site.targetMember,
-              callSite: site,
-            });
+          let searchObj = ownerObj;
+          let hasFunc = false;
+          let foundOn = null;
+          while (searchObj && !hasFunc) {
+            hasFunc =
+              searchObj.functions.some(f  => f.name.toLowerCase()  === site.targetMember.toLowerCase()) ||
+              searchObj.prototypes.some(p => p.name.toLowerCase() === site.targetMember.toLowerCase());
+            if (hasFunc) {
+              foundOn = searchObj.name;
+            } else if (searchObj.parentName && !this._isBuiltin(searchObj.parentName)) {
+              searchObj = objectMap.get(searchObj.parentName.toLowerCase());
+            } else {
+              break;
+            }
           }
-          // else: PB built-in or global function — silently ignore
+          if (hasFunc) {
+            console.log(`[PBAnalyzer] barecall ✔ ${fromObject}.${fromMember} → ${fromObject}.${site.targetMember} (def. em ${foundOn})`);
+            crossCalls.push({ fromObject, fromMember, toObject: fromObject, toMember: site.targetMember, callSite: site });
+          } else {
+            console.log(`[PBAnalyzer] barecall ✘ ${fromObject}.${fromMember} → .${site.targetMember} — não encontrado (global/built-in/não carregado)`);
+          }
         }
         continue;
       }
@@ -237,7 +245,12 @@ class PBAnalyzer {
         // Step 2: resolve via instance variable type (e.g. iu_service → u_retrieve_dados)
         if (!resolvedObj) {
           const varType = varTypeMap.get(targetKey);
-          if (varType) resolvedObj = objectMap.get(varType);
+          if (varType) {
+            resolvedObj = objectMap.get(varType);
+            if (resolvedObj) console.log(`[PBAnalyzer] dotcall ✔ via varTypeMap: ${fromObject}.${fromMember} → ${targetKey}(=${varType}) → ${resolvedObj.name}.${site.targetMember}`);
+          }
+        } else {
+          console.log(`[PBAnalyzer] dotcall ✔ direto: ${fromObject}.${fromMember} → ${resolvedObj.name}.${site.targetMember}`);
         }
 
         if (resolvedObj) {
@@ -249,6 +262,7 @@ class PBAnalyzer {
             callSite: site,
           });
         } else {
+          console.log(`[PBAnalyzer] dotcall ✘ ${fromObject}.${fromMember} → ${site.targetObject}.${site.targetMember} — "${site.targetObject}" não no mapa nem em varTypeMap`);
           unresolved.push({ fromObject, fromMember, ...site });
         }
       }
