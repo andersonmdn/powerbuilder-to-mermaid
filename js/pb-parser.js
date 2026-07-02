@@ -584,6 +584,19 @@ class PBParser {
       });
     }
 
+    // Keyword form: "Trigger Event <name>" / "Post Event <name>" (two words, no quotes, no dot)
+    const kwEventRe = /\b(Trigger|Post)\s+Event\s+(\w+)/gi;
+    while ((m = kwEventRe.exec(stripped)) !== null) {
+      if (!this._isBuiltinIdentifier(m[2])) {
+        sites.push({
+          kind: m[1].toLowerCase() === 'trigger' ? 'triggerevent' : 'postevent',
+          targetObject: null,  // keyword form always targets self in PB
+          targetMember: m[2],
+          rawText: m[0],
+        });
+      }
+    }
+
     // Call objectvar::eventname
     const callRe = /\bCall\s+(\w+)::(\w+)\b/gi;
     while ((m = callRe.exec(stripped)) !== null) {

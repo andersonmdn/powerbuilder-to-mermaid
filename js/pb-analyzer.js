@@ -184,6 +184,24 @@ class PBAnalyzer {
          site.kind === 'postevent') &&
         site.targetObject;
 
+      // Self-triggered events whose name matches a known object → cross-object dependency
+      // e.g. "Trigger Event u_retrieve_dados()" when u_retrieve_dados is in objectMap
+      const isSelfEventTrigger =
+        (site.kind === 'triggerevent' || site.kind === 'postevent') && !site.targetObject;
+      if (isSelfEventTrigger) {
+        const resolvedObj = objectMap.get(site.targetMember.toLowerCase());
+        if (resolvedObj) {
+          crossCalls.push({
+            fromObject,
+            fromMember,
+            toObject: resolvedObj.name,
+            toMember: site.targetMember,
+            callSite: site,
+          });
+        }
+        continue;
+      }
+
       if (hasCrossTarget) {
         const targetKey = site.targetObject.toLowerCase();
         // Step 1: direct lookup by object/control name
