@@ -186,6 +186,27 @@ class PBAnalyzer {
          site.kind === 'postevent') &&
         site.targetObject;
 
+      // Bare self-call: funcName( without dot — resolve against current object's functions
+      if (site.kind === 'barecall') {
+        const ownerObj = objectMap.get(fromObject.toLowerCase());
+        if (ownerObj) {
+          const hasFunc =
+            ownerObj.functions.some(f => f.name.toLowerCase() === site.targetMember.toLowerCase()) ||
+            ownerObj.prototypes.some(p => p.name.toLowerCase() === site.targetMember.toLowerCase());
+          if (hasFunc) {
+            crossCalls.push({
+              fromObject,
+              fromMember,
+              toObject: fromObject,  // self-loop
+              toMember: site.targetMember,
+              callSite: site,
+            });
+          }
+          // else: PB built-in or global function — silently ignore
+        }
+        continue;
+      }
+
       // Self-triggered events whose name matches a known object → cross-object dependency
       // e.g. "Trigger Event u_retrieve_dados()" when u_retrieve_dados is in objectMap
       const isSelfEventTrigger =

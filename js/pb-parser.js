@@ -608,6 +608,20 @@ class PBParser {
       });
     }
 
+    // Bare self-call: funcName( with no preceding dot — calls a method on self
+    // e.g. f_retrieve(dw_get, dw_manut). Resolver filters to only known functions on the object.
+    const bareRe = /(?<![.\w])(\w+)\s*\(/g;
+    while ((m = bareRe.exec(stripped)) !== null) {
+      if (!this._isBuiltinIdentifier(m[1]) && !this._isPBKeyword(m[1])) {
+        sites.push({
+          kind: 'barecall',
+          targetObject: null,  // always self
+          targetMember: m[1],
+          rawText: m[0],
+        });
+      }
+    }
+
     console.debug(`[PBParser] _extractCallSites: ${sites.length} call site(s) encontrado(s)`);
     return sites;
   }
@@ -734,6 +748,19 @@ class PBParser {
     if (p === 'nonvisualobject') return 'nonvisual';
     if (p === 'userobject') return 'userobject';
     return 'userobject';
+  }
+
+  /** PB keywords and common built-in functions that appear before ( and are not user-defined. */
+  _isPBKeyword(name) {
+    const kw = new Set([
+      'if', 'elseif', 'while', 'until', 'for', 'not', 'return',
+      'choose', 'case', 'try', 'catch', 'throw',
+      'len', 'mid', 'left', 'right', 'upper', 'lower', 'trim', 'pos',
+      'isnull', 'isvalid', 'isdate', 'isnumber',
+      'messagebox', 'open', 'close', 'send',
+      'abs', 'int', 'mod', 'max', 'min', 'round', 'truncate',
+    ]);
+    return kw.has(name.toLowerCase());
   }
 
   /** PB built-in identifiers that are false positives for cross-object call detection. */
