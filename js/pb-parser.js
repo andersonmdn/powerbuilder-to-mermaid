@@ -320,7 +320,11 @@ class PBParser {
       console.warn(`[PBParser] _processFunctionBlock: sem dono para função "${header.name}"`);
       return;
     }
-    console.debug(`[PBParser] Função "${header.name}" → owner "${ownerObj.name}"`);
+    const callSites = this._extractCallSites(body);
+    console.log(`[PBParser] Função "${ownerObj.name}.${header.name}" → body ${body.length} chars, ${callSites.length} call site(s)`);
+    if (callSites.length > 0) {
+      console.log(`  └─ call sites:`, callSites.map(s => `${s.kind}:${s.targetObject || 'self'}.${s.targetMember}`));
+    }
 
     const func = {
       access: header.access,
@@ -329,7 +333,7 @@ class PBParser {
       name: header.name,
       params: header.params,
       body,
-      callSites: this._extractCallSites(body),
+      callSites,
     };
 
     // Replace prototype entry if present (merge)
@@ -360,14 +364,18 @@ class PBParser {
       console.warn(`[PBParser] _processEventBlock: sem dono para evento "${header.ownerName}.${header.name}"`);
       return;
     }
-    console.debug(`[PBParser] Evento "${header.ownerName}.${header.name}" registrado`);
+    const callSites = this._extractCallSites(body);
+    console.log(`[PBParser] Evento "${header.ownerName}.${header.name}" → body ${body.length} chars, ${callSites.length} call site(s)`);
+    if (callSites.length > 0) {
+      console.log(`  └─ call sites:`, callSites.map(s => `${s.kind}:${s.targetObject || 'self'}.${s.targetMember}`));
+    }
 
     const event = {
       ownerName: header.ownerName,
       name: header.name,
       params: header.params,
       body,
-      callSites: this._extractCallSites(body),
+      callSites,
     };
 
     ownerObj.events.push(event);

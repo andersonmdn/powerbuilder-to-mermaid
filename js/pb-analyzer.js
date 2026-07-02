@@ -136,6 +136,7 @@ class PBAnalyzer {
 
       // Resolve from function bodies
       for (const func of obj.functions) {
+        console.log(`[PBAnalyzer] Resolvendo função ${obj.name}.${func.name}: ${func.callSites.length} call site(s)`);
         this._resolveFromMember(
           func.callSites, obj.name, func.name,
           objectMap, varTypeMap, crossObjectCalls, unresolvedCalls
@@ -145,6 +146,7 @@ class PBAnalyzer {
       // Resolve from event bodies
       for (const event of obj.events) {
         if (!event.body) continue;
+        console.log(`[PBAnalyzer] Resolvendo evento ${obj.name}.${event.name}: ${event.callSites.length} call site(s)`);
         this._resolveFromMember(
           event.callSites, obj.name, event.name,
           objectMap, varTypeMap, crossObjectCalls, unresolvedCalls
