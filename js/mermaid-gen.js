@@ -189,19 +189,18 @@ class MermaidGenerator {
 
   _renderCallEdges(crossObjectCalls) {
     const lines = [];
-    // Deduplicate: same fromObj→toObj pair with same members
     const seen = new Set();
 
     for (const call of crossObjectCalls) {
-      const label = this._sanitiseLabel(
-        `${call.fromMember}→${call.toMember}`
-      );
+      const fromLabel = this._sanitiseLabel(call.fromMember);
+      const toLabel   = this._sanitiseLabel(call.toMember);
+      const label = fromLabel === toLabel ? fromLabel : `${fromLabel}.${toLabel}`;
       const key = `${call.fromObject}..>${call.toObject}:${label}`;
       if (seen.has(key)) continue;
       seen.add(key);
 
       const from = this._sanitiseName(call.fromObject);
-      const to = this._sanitiseName(call.toObject);
+      const to   = this._sanitiseName(call.toObject);
       lines.push(`    ${from} ..> ${to} : ${label}`);
     }
 

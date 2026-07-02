@@ -152,9 +152,11 @@ class PBAnalyzer {
       }
     }
 
+    console.log(`[PBAnalyzer] ✔ Chamadas resolvidas (${crossObjectCalls.length}):`,
+      crossObjectCalls.map(c => `${c.fromObject}.${c.fromMember} → ${c.toObject}.${c.toMember}`));
     if (unresolvedCalls.length > 0) {
-      console.warn(`[PBAnalyzer] ${unresolvedCalls.length} call site(s) não resolvido(s):`,
-        unresolvedCalls.map(u => `${u.fromObject}.${u.fromMember} → ${u.targetObject}`));
+      console.warn(`[PBAnalyzer] ✘ Chamadas não resolvidas (${unresolvedCalls.length}) — objeto não carregado?`,
+        unresolvedCalls.map(u => `${u.fromObject}.${u.fromMember} → ${u.targetObject}.${u.targetMember}`));
     }
     return { crossObjectCalls, unresolvedCalls };
   }
@@ -191,6 +193,7 @@ class PBAnalyzer {
       if (isSelfEventTrigger) {
         const resolvedObj = objectMap.get(site.targetMember.toLowerCase());
         if (resolvedObj) {
+          console.log(`[PBAnalyzer] Trigger Event resolvido: ${fromObject}.${fromMember} → ${resolvedObj.name}`);
           crossCalls.push({
             fromObject,
             fromMember,
@@ -198,6 +201,8 @@ class PBAnalyzer {
             toMember: site.targetMember,
             callSite: site,
           });
+        } else {
+          console.log(`[PBAnalyzer] Trigger Event não resolvido: "${site.targetMember}" chamado em ${fromObject}.${fromMember} — objeto não encontrado no mapa`);
         }
         continue;
       }
