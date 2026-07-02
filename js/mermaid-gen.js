@@ -34,6 +34,9 @@ class MermaidGenerator {
    * @returns {string} - complete Mermaid classDiagram text
    */
   generate(project) {
+    console.group('[MermaidGenerator] generate');
+    console.log('[MermaidGenerator] Opções:', this._opts);
+
     const lines = ['classDiagram'];
 
     // Class blocks
@@ -44,6 +47,7 @@ class MermaidGenerator {
         lines.push(...block);
       }
     }
+    console.log(`[MermaidGenerator] Class blocks renderizados: ${project.objects.size} objetos`);
 
     // Inheritance edges
     const inheritEdges = this._renderInheritanceEdges(project.inheritanceEdges);
@@ -51,6 +55,7 @@ class MermaidGenerator {
       lines.push('');
       lines.push(...inheritEdges);
     }
+    console.log(`[MermaidGenerator] Inheritance edges: ${inheritEdges.length}`);
 
     // Control containment edges
     if (this._opts.includeControls) {
@@ -59,6 +64,7 @@ class MermaidGenerator {
         lines.push('');
         lines.push(...containEdges);
       }
+      console.log(`[MermaidGenerator] Containment edges: ${containEdges.length}`);
     }
 
     // Cross-object call edges
@@ -68,8 +74,11 @@ class MermaidGenerator {
         lines.push('');
         lines.push(...callEdges);
       }
+      console.log(`[MermaidGenerator] Call edges: ${callEdges.length}`);
     }
 
+    console.log(`[MermaidGenerator] Saída total: ${lines.length} linhas`);
+    console.groupEnd();
     return lines.join('\n');
   }
 

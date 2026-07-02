@@ -67,6 +67,7 @@ const App = (() => {
 
   function _processFileList(fileList) {
     if (!fileList || !fileList.length) return;
+    console.log(`[App] _processFileList: ${fileList.length} arquivo(s) recebido(s)`);
 
     const LARGE_FILE_BYTES = 500 * 1024;
     const promises = Array.from(fileList).map(file => {
@@ -96,7 +97,10 @@ const App = (() => {
   function _readFile(file) {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
-      reader.onload = e => resolve({ filename: file.name, text: e.target.result });
+      reader.onload = e => {
+        console.log(`[App] Arquivo lido: ${file.name} (${_formatBytes(file.size)})`);
+        resolve({ filename: file.name, text: e.target.result });
+      };
       reader.onerror = () => {
         _updateFileRow(file.name, 'error', 'Falha ao ler arquivo.');
         reject(new Error(`Failed to read ${file.name}`));
@@ -120,6 +124,8 @@ const App = (() => {
   }
 
   function _runPipeline() {
+    console.group('[App] _runPipeline');
+    console.time('[App] pipeline total');
     try {
       const parser = new PBParser();
       const parsedFiles = _loadedFiles.map(f => {
@@ -132,13 +138,16 @@ const App = (() => {
           throw err;
         }
       });
+      console.log(`[App] Parse concluído: ${parsedFiles.length} arquivo(s)`);
 
       const analyzer = new PBAnalyzer();
       _analyzedProject = analyzer.analyze(parsedFiles);
+      console.log(`[App] Análise concluída: ${_analyzedProject.objects.size} objetos, ${_analyzedProject.inheritanceEdges.length} edges de herança, ${_analyzedProject.crossObjectCalls.length} chamadas cruzadas`);
 
       const options = _getOptions();
       const generator = new MermaidGenerator(options);
       _generatedText = generator.generate(_analyzedProject);
+      console.log(`[App] Diagrama gerado: ${_generatedText.length} chars`);
 
       _showResults();
       _showStatus('Concluído!', 'success');
@@ -146,6 +155,8 @@ const App = (() => {
       _showStatus(`Erro: ${err.message}`, 'error');
       console.error('[App] Pipeline error:', err);
     } finally {
+      console.timeEnd('[App] pipeline total');
+      console.groupEnd();
       _setGenerateEnabled(true);
     }
   }

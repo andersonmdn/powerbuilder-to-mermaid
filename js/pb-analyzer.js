@@ -32,9 +32,21 @@ class PBAnalyzer {
    * @returns {AnalyzedProject}
    */
   analyze(parsedFiles) {
+    console.group('[PBAnalyzer] analyze');
+    console.time('[PBAnalyzer] analyze');
+
     const objectMap = this._buildObjectMap(parsedFiles);
+    console.log(`[PBAnalyzer] Mapa de objetos: ${objectMap.size} objeto(s)`);
+
     const inheritanceEdges = this._extractInheritanceEdges(objectMap);
+    const builtinEdges = inheritanceEdges.filter(e => e.isBuiltin).length;
+    console.log(`[PBAnalyzer] Edges de herança: ${inheritanceEdges.length} (${builtinEdges} para tipos built-in)`);
+
     const { crossObjectCalls, unresolvedCalls } = this._resolveCallSites(objectMap);
+    console.log(`[PBAnalyzer] Chamadas cruzadas resolvidas: ${crossObjectCalls.length}, não resolvidas: ${unresolvedCalls.length}`);
+
+    console.timeEnd('[PBAnalyzer] analyze');
+    console.groupEnd();
 
     return {
       objects: objectMap,
@@ -52,6 +64,7 @@ class PBAnalyzer {
    * @returns {Map<string, PBObject>}
    */
   _buildObjectMap(parsedFiles) {
+    console.log(`[PBAnalyzer] _buildObjectMap: ${parsedFiles.length} arquivo(s)`);
     const map = new Map();
 
     for (const file of parsedFiles) {
@@ -69,6 +82,7 @@ class PBAnalyzer {
       }
     }
 
+    console.log(`[PBAnalyzer] _buildObjectMap: ${map.size} objetos únicos`);
     return map;
   }
 
@@ -136,6 +150,10 @@ class PBAnalyzer {
       }
     }
 
+    if (unresolvedCalls.length > 0) {
+      console.warn(`[PBAnalyzer] ${unresolvedCalls.length} call site(s) não resolvido(s):`,
+        unresolvedCalls.map(u => `${u.fromObject}.${u.fromMember} → ${u.targetObject}`));
+    }
     return { crossObjectCalls, unresolvedCalls };
   }
 

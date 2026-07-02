@@ -13,25 +13,36 @@ class PBParser {
    * @returns {ParsedFile}
    */
   parseFile(filename, text) {
+    console.group(`[PBParser] parseFile: ${filename}`);
+    console.log(`[PBParser] Tamanho do texto: ${text.length} chars`);
+
     const normalised = this._normaliseLines(text);
     const exportHeader = this._extractExportHeader(normalised);
     const blocks = this._splitIntoBlocks(normalised);
     const objectMap = new Map(); // lowercase name → PBObject
 
+    console.log(`[PBParser] Blocos encontrados: ${blocks.length}`, blocks.map(b => b.kind));
+
     for (const block of blocks) {
       this._processBlock(block, objectMap, filename);
     }
+
+    console.log(`[PBParser] Objetos no mapa: ${objectMap.size}`, [...objectMap.keys()]);
 
     // Merge event stubs into their event implementations
     for (const obj of objectMap.values()) {
       this._mergeEventStubs(obj);
     }
 
-    return {
+    const result = {
       filename,
       exportHeader,
       objects: Array.from(objectMap.values()),
     };
+
+    console.log(`[PBParser] Resultado: ${result.objects.length} objetos em "${filename}"`);
+    console.groupEnd();
+    return result;
   }
 
   // ─── Block Splitting (state machine) ──────────────────────────────────────
@@ -169,6 +180,7 @@ class PBParser {
   // ─── Block Processors ─────────────────────────────────────────────────────
 
   _processBlock(block, objectMap, sourceFile) {
+    console.debug(`[PBParser] _processBlock: kind="${block.kind}"`);
     switch (block.kind) {
       case 'forward':      return this._processForward(block.text, objectMap, sourceFile);
       case 'typedecl':     return this._processTypeDecl(block.text, objectMap, sourceFile);
@@ -297,11 +309,18 @@ class PBParser {
     const body = bodyLines.join('\n');
 
     const header = this._parseFunctionHeader(headerLine);
-    if (!header) return;
+    if (!header) {
+      console.warn(`[PBParser] _processFunctionBlock: header não parseado →`, headerLine);
+      return;
+    }
 
     // Find the object that owns this function via its prototypes
     const ownerObj = this._findFunctionOwner(header.name, objectMap);
-    if (!ownerObj) return;
+    if (!ownerObj) {
+      console.warn(`[PBParser] _processFunctionBlock: sem dono para função "${header.name}"`);
+      return;
+    }
+    console.debug(`[PBParser] Função "${header.name}" → owner "${ownerObj.name}"`);
 
     const func = {
       access: header.access,
@@ -337,7 +356,11 @@ class PBParser {
     if (!header) return;
 
     const ownerObj = objectMap.get(header.ownerName.toLowerCase());
-    if (!ownerObj) return;
+    if (!ownerObj) {
+      console.warn(`[PBParser] _processEventBlock: sem dono para evento "${header.ownerName}.${header.name}"`);
+      return;
+    }
+    console.debug(`[PBParser] Evento "${header.ownerName}.${header.name}" registrado`);
 
     const event = {
       ownerName: header.ownerName,
@@ -558,6 +581,7 @@ class PBParser {
       });
     }
 
+    console.debug(`[PBParser] _extractCallSites: ${sites.length} call site(s) encontrado(s)`);
     return sites;
   }
 
@@ -568,6 +592,7 @@ class PBParser {
    * Stubs provide the return type; implementations provide the body.
    */
   _mergeEventStubs(obj) {
+    let mergedCount = 0;
     for (const stub of obj.eventStubs) {
       const existing = obj.events.find(
         e => e.name.toLowerCase() === stub.name.toLowerCase()
@@ -578,6 +603,7 @@ class PBParser {
         if (!existing.params.length && stub.params.length) {
           existing.params = stub.params;
         }
+        mergedCount++;
       } else {
         // No implementation found — add as stub-only event (declared but not implemented here)
         obj.events.push({
@@ -590,6 +616,9 @@ class PBParser {
           stubOnly: true,
         });
       }
+    }
+    if (obj.eventStubs.length > 0) {
+      console.debug(`[PBParser] _mergeEventStubs: ${obj.name} — ${mergedCount}/${obj.eventStubs.length} stub(s) mesclado(s)`);
     }
   }
 
