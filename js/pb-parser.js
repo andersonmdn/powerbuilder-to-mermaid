@@ -5,6 +5,11 @@
  */
 class PBParser {
 
+  constructor() {
+    this._cse = new CallSiteExtractor();
+    this._lp  = new PBLineParser();
+  }
+
   // ─── Public API ────────────────────────────────────────────────────────────
 
   /**
@@ -47,150 +52,89 @@ class PBParser {
 
   // ─── Block Splitting (state machine) ──────────────────────────────────────
 
-  /**
-   * Splits the normalised source into labelled blocks using a line-by-line
-   * state machine.
-   * @returns {Block[]}
-   */
   _splitIntoBlocks(text) {
-    const lines = text.split('\n');
-    const blocks = [];
+    const S   = PB_CONSTANTS.PB_STATES;
+    const ctx = { buffer: [], blocks: [] };
 
-    const STATE = {
-      OTHER: 'other',
-      FORWARD: 'forward',
-      TYPEDECL: 'typedecl',
-      TYPEVARIABLES: 'typevariables',
-      PROTOTYPES: 'prototypes',
-      FUNCTION: 'function',
-      EVENT: 'event',
-      INLINE_EVENT: 'inline_event',
+    const emit = (kind) => {
+      if (ctx.buffer.length > 0) ctx.blocks.push({ kind, text: ctx.buffer.join('\n') });
+      ctx.buffer = [];
     };
 
-    let state = STATE.OTHER;
-    let buffer = [];
-    let meta = {}; // extra info per block type
+    const dispatch = new Map([
+      [S.OTHER,         (line, t) => this._stateOther(line, t, ctx, emit, S)],
+      [S.FORWARD,       (line, t) => this._stateForward(line, t, ctx, emit, S)],
+      [S.TYPEDECL,      (line, t) => this._stateTypedecl(line, t, ctx, emit, S)],
+      [S.TYPEVARIABLES, (line, t) => this._stateTypeVariables(line, t, ctx, emit, S)],
+      [S.PROTOTYPES,    (line, t) => this._statePrototypes(line, t, ctx, emit, S)],
+      [S.FUNCTION,      (line, t) => this._stateFunction(line, t, ctx, emit, S)],
+      [S.EVENT,         (line, t) => this._stateEvent(line, t, ctx, emit, S)],
+      [S.INLINE_EVENT,  (line, t) => this._stateInlineEvent(line, t, ctx, emit, S)],
+    ]);
 
-    const emit = (kind, extraMeta) => {
-      if (buffer.length > 0) {
-        blocks.push({ kind, text: buffer.join('\n'), ...extraMeta });
-      }
-      buffer = [];
-    };
-
-    for (const line of lines) {
-      const trimmed = line.trim();
-      const lower = trimmed.toLowerCase();
-
-      switch (state) {
-        case STATE.OTHER: {
-          if (/^forward\s+prototypes\s*$/i.test(trimmed)) {
-            emit(STATE.OTHER, {});
-            state = STATE.PROTOTYPES;
-          } else if (/^forward\s*$/i.test(trimmed)) {
-            emit(STATE.OTHER, {});
-            state = STATE.FORWARD;
-          } else if (/^type\s+variables\s*$/i.test(trimmed)) {
-            emit(STATE.OTHER, {});
-            state = STATE.TYPEVARIABLES;
-          } else if (/^(?:global|local)\s+type\s+\w+\s+from\s+\w+/i.test(trimmed)) {
-            emit(STATE.OTHER, {});
-            state = STATE.TYPEDECL;
-            buffer.push(line);
-          } else if (/^(public|protected|private)\s+(function|subroutine)\b/i.test(trimmed)) {
-            emit(STATE.OTHER, {});
-            state = STATE.FUNCTION;
-            buffer.push(line);
-          } else if (/^on\s+\w+\.\w+/i.test(trimmed)) {
-            emit(STATE.OTHER, {});
-            state = STATE.EVENT;
-            buffer.push(line);
-          } else if (/^event\b/i.test(trimmed)) {
-            // Inline event implementation: "event name() ... end event"
-            // (event stubs inside type...end type are handled in STATE.TYPEDECL)
-            emit(STATE.OTHER, {});
-            state = STATE.INLINE_EVENT;
-            buffer.push(line);
-          } else {
-            buffer.push(line);
-          }
-          break;
-        }
-
-        case STATE.FORWARD: {
-          if (/^end\s+forward\s*$/i.test(trimmed)) {
-            emit(STATE.FORWARD, {});
-            state = STATE.OTHER;
-          } else {
-            buffer.push(line);
-          }
-          break;
-        }
-
-        case STATE.TYPEDECL: {
-          buffer.push(line);
-          if (/^end\s+type\s*$/i.test(trimmed)) {
-            emit(STATE.TYPEDECL, {});
-            state = STATE.OTHER;
-          }
-          break;
-        }
-
-        case STATE.TYPEVARIABLES: {
-          if (/^end\s+variables\s*$/i.test(trimmed)) {
-            emit(STATE.TYPEVARIABLES, {});
-            state = STATE.OTHER;
-          } else {
-            buffer.push(line);
-          }
-          break;
-        }
-
-        case STATE.PROTOTYPES: {
-          if (/^end\s+prototypes\s*$/i.test(trimmed)) {
-            emit(STATE.PROTOTYPES, {});
-            state = STATE.OTHER;
-          } else {
-            buffer.push(line);
-          }
-          break;
-        }
-
-        case STATE.FUNCTION: {
-          buffer.push(line);
-          if (/^end\s+(function|subroutine)\s*$/i.test(trimmed)) {
-            emit(STATE.FUNCTION, {});
-            state = STATE.OTHER;
-          }
-          break;
-        }
-
-        case STATE.EVENT: {
-          buffer.push(line);
-          if (/^end\s+on\s*$/i.test(trimmed)) {
-            emit(STATE.EVENT, {});
-            state = STATE.OTHER;
-          }
-          break;
-        }
-
-        case STATE.INLINE_EVENT: {
-          buffer.push(line);
-          if (/^end\s+event\s*$/i.test(trimmed)) {
-            emit(STATE.INLINE_EVENT, {});
-            state = STATE.OTHER;
-          }
-          break;
-        }
-      }
+    let state = S.OTHER;
+    for (const line of text.split('\n')) {
+      const next = dispatch.get(state)(line, line.trim());
+      if (next !== undefined) state = next;
     }
 
-    // Flush remaining buffer
-    if (buffer.length > 0 && buffer.some(l => l.trim())) {
-      blocks.push({ kind: STATE.OTHER, text: buffer.join('\n') });
+    if (ctx.buffer.length > 0 && ctx.buffer.some(l => l.trim())) {
+      ctx.blocks.push({ kind: S.OTHER, text: ctx.buffer.join('\n') });
     }
 
-    return blocks;
+    return ctx.blocks;
+  }
+
+  // ─── State handlers ────────────────────────────────────────────────────────
+
+  _stateOther(line, trimmed, ctx, emit, S) {
+    if (/^forward\s+prototypes\s*$/i.test(trimmed)) { emit(S.OTHER); return S.PROTOTYPES; }
+    if (/^forward\s*$/i.test(trimmed))              { emit(S.OTHER); return S.FORWARD; }
+    if (/^type\s+variables\s*$/i.test(trimmed))     { emit(S.OTHER); return S.TYPEVARIABLES; }
+    if (/^(?:global|local)\s+type\s+\w+\s+from\s+\w+/i.test(trimmed)) {
+      emit(S.OTHER); ctx.buffer.push(line); return S.TYPEDECL;
+    }
+    if (/^(public|protected|private)\s+(function|subroutine)\b/i.test(trimmed)) {
+      emit(S.OTHER); ctx.buffer.push(line); return S.FUNCTION;
+    }
+    if (/^on\s+\w+\.\w+/i.test(trimmed)) { emit(S.OTHER); ctx.buffer.push(line); return S.EVENT; }
+    if (/^event\b/i.test(trimmed))        { emit(S.OTHER); ctx.buffer.push(line); return S.INLINE_EVENT; }
+    ctx.buffer.push(line);
+  }
+
+  _stateForward(line, trimmed, ctx, emit, S) {
+    if (/^end\s+forward\s*$/i.test(trimmed)) { emit(S.FORWARD); return S.OTHER; }
+    ctx.buffer.push(line);
+  }
+
+  _stateTypedecl(line, trimmed, ctx, emit, S) {
+    ctx.buffer.push(line);
+    if (/^end\s+type\s*$/i.test(trimmed)) { emit(S.TYPEDECL); return S.OTHER; }
+  }
+
+  _stateTypeVariables(line, trimmed, ctx, emit, S) {
+    if (/^end\s+variables\s*$/i.test(trimmed)) { emit(S.TYPEVARIABLES); return S.OTHER; }
+    ctx.buffer.push(line);
+  }
+
+  _statePrototypes(line, trimmed, ctx, emit, S) {
+    if (/^end\s+prototypes\s*$/i.test(trimmed)) { emit(S.PROTOTYPES); return S.OTHER; }
+    ctx.buffer.push(line);
+  }
+
+  _stateFunction(line, trimmed, ctx, emit, S) {
+    ctx.buffer.push(line);
+    if (/^end\s+(function|subroutine)\s*$/i.test(trimmed)) { emit(S.FUNCTION); return S.OTHER; }
+  }
+
+  _stateEvent(line, trimmed, ctx, emit, S) {
+    ctx.buffer.push(line);
+    if (/^end\s+on\s*$/i.test(trimmed)) { emit(S.EVENT); return S.OTHER; }
+  }
+
+  _stateInlineEvent(line, trimmed, ctx, emit, S) {
+    ctx.buffer.push(line);
+    if (/^end\s+event\s*$/i.test(trimmed)) { emit(S.INLINE_EVENT); return S.OTHER; }
   }
 
   // ─── Block Processors ─────────────────────────────────────────────────────
@@ -462,262 +406,20 @@ class PBParser {
     });
   }
 
-  // ─── Line-level parsers ────────────────────────────────────────────────────
+  // ─── Line-level parsers & parameter parsing (delegates to PBLineParser) ────
 
-  /**
-   * Parses an event stub inside a type...end type block.
-   * Forms:
-   *   event ue_custom;
-   *   event type long ue_with_return (string as_param)
-   */
-  _parseEventStub(line) {
-    // Typed event: "event type long ue_with_return (string as_param)"
-    const typedMatch = line.match(/^event\s+type\s+(\w+)\s+(\w+)\s*\(([^)]*)\)/i);
-    if (typedMatch) {
-      const [, returnType, name, rawParams] = typedMatch;
-      return { name, returnType, params: this._parseParamList(rawParams) };
-    }
-
-    // Event with parens (no "type" keyword): "event hide_dados()" / "event hide_dados ( )" / "event hide_dados();"
-    const parenMatch = line.match(/^event\s+(\w+)\s*\(([^)]*)\)\s*;?$/i);
-    if (parenMatch) {
-      const [, name, rawParams] = parenMatch;
-      return { name, returnType: null, params: this._parseParamList(rawParams.trim()) };
-    }
-
-    // Simple event with optional trailing params: "event ue_custom;" or "event ue_custom;string as_arg"
-    const simpleMatch = line.match(/^event\s+(\w+)\s*;(.*)$/i);
-    if (simpleMatch) {
-      const [, name, rawParams] = simpleMatch;
-      return { name, returnType: null, params: this._parseParamList(rawParams.trim()) };
-    }
-
-    return null;
-  }
-
-  /** Parses a variable declaration line given the current access modifier. */
-  _parseVariableLine(line, access) {
-    if (/^(public|protected|private)\s*:?\s*$/i.test(line)) return null;
-    if (line.startsWith('//')) return null;
-
-    let rest = line;
-    let resolvedAccess = access;
-
-    // Strip leading access and sub-access modifier words.
-    // Main: public, protected, private
-    // Sub: privateread, protectedread, systemread, privatewrite, protectedwrite, systemwrite
-    const modRe = /^(public|protected|private|privateread|protectedread|systemread|privatewrite|protectedwrite|systemwrite)\s+/i;
-    let found;
-    while ((found = rest.match(modRe))) {
-      const w = found[1].toLowerCase();
-      if (w === 'public' || w === 'protected' || w === 'private') {
-        resolvedAccess = w;
-      }
-      rest = rest.slice(found[0].length);
-    }
-
-    // Remaining: "typeName name" or "typeName[] name" or "typeName name[]" with optional "= value"
-    const match = rest.match(/^(\w+(?:\[\])?)\s+(\w+)(\[\])?\s*(?:=.*)?$/i);
-    if (!match) return null;
-
-    const [, rawType, name, bracketOnName] = match;
-    const isArray = rawType.endsWith('[]') || !!bracketOnName;
-
-    return {
-      access: resolvedAccess,
-      typeName: rawType.replace('[]', ''),
-      name,
-      isArray,
-    };
-  }
-
-  /** Parses a prototype declaration line. */
-  _parsePrototypeLine(line) {
-    const match = line.match(
-      /^(public|protected|private)\s+(function|subroutine)\s+(?:(\w+)\s+)?(\w+)\s*\(([^)]*)\)/i
-    );
-    if (!match) return null;
-
-    const [, access, kind, returnType, name, rawParams] = match;
-    return {
-      access: access.toLowerCase(),
-      kind: kind.toLowerCase(),
-      returnType: kind.toLowerCase() === 'subroutine' ? 'void' : (returnType || 'void'),
-      name,
-      params: this._parseParamList(rawParams),
-    };
-  }
-
-  /** Parses a function/subroutine header line. */
-  _parseFunctionHeader(line) {
-    const match = line.match(
-      /^(public|protected|private)\s+(function|subroutine)\s+(?:(\w+)\s+)?(\w+)\s*\(([^)]*)\)/i
-    );
-    if (!match) return null;
-
-    const [, access, kind, returnType, name, rawParams] = match;
-    return {
-      access: access.toLowerCase(),
-      kind: kind.toLowerCase(),
-      returnType: kind.toLowerCase() === 'subroutine' ? 'void' : (returnType || 'void'),
-      name,
-      params: this._parseParamList(rawParams),
-    };
-  }
-
-  /**
-   * Parses an "on obj.event" or "on obj.event;params" header line.
-   */
-  _parseEventHeader(line) {
-    // With params after semicolon: "on w_main.ue_custom;string as_arg" or bare "on w_main.ue_custom;"
-    const withParams = line.match(/^on\s+(\w+)\.(\w+)\s*;(.*)$/i);
-    if (withParams) {
-      const [, ownerName, name, rawParams] = withParams;
-      return { ownerName, name, params: this._parseParamList(rawParams.trim()) };
-    }
-
-    // With parens: "on w_main.ue_custom()" / "on w_main.ue_custom(string as_arg)" / "on w_main.ue_custom();"
-    const withParens = line.match(/^on\s+(\w+)\.(\w+)\s*\(([^)]*)\)\s*;?$/i);
-    if (withParens) {
-      const [, ownerName, name, rawParams] = withParens;
-      return { ownerName, name, params: this._parseParamList(rawParams.trim()) };
-    }
-
-    // Without params: "on w_main.open"
-    const noParams = line.match(/^on\s+(\w+)\.(\w+)\s*$/i);
-    if (noParams) {
-      const [, ownerName, name] = noParams;
-      return { ownerName, name, params: [] };
-    }
-
-    return null;
-  }
-
-  // ─── Parameter parsing ─────────────────────────────────────────────────────
-
-  /** Parses a comma-separated parameter string into PBParam[]. */
-  _parseParamList(raw) {
-    if (!raw || !raw.trim()) return [];
-
-    return raw.split(',')
-      .map(p => this._parseParam(p.trim()))
-      .filter(Boolean);
-  }
-
-  /** Parses a single parameter like "ref string as_name" or "integer ai_val". */
-  _parseParam(raw) {
-    if (!raw) return null;
-
-    const passByRef = /^ref\s+/i.test(raw);
-    const withoutRef = raw.replace(/^ref\s+/i, '').trim();
-
-    // "typeName name" — two words
-    const match = withoutRef.match(/^(\w+(?:\[\])?)\s+(\w+)(?:\[\])?$/i);
-    if (!match) return null;
-
-    const [, typeName, name] = match;
-    return { typeName, name, passByRef };
-  }
+  _parseEventStub(line)         { return this._lp.parseEventStub(line); }
+  _parseVariableLine(line, acc) { return this._lp.parseVariableLine(line, acc); }
+  _parsePrototypeLine(line)     { return this._lp.parsePrototypeLine(line); }
+  _parseFunctionHeader(line)    { return this._lp.parseFunctionHeader(line); }
+  _parseEventHeader(line)       { return this._lp.parseEventHeader(line); }
+  _parseParamList(raw)          { return this._lp.parseParamList(raw); }
+  _parseParam(raw)              { return this._lp.parseParam(raw); }
 
   // ─── Call site extraction ──────────────────────────────────────────────────
 
-  /**
-   * Scans body text for cross-object call patterns.
-   * @returns {CallSite[]}
-   */
   _extractCallSites(body) {
-    if (!body) return [];
-
-    const sites = [];
-    // Strip string literals first, then comments, so we don't match inside strings
-    const stripped = this._stripComments(this._stripStringLiterals(body));
-
-    let m;
-
-    // Cross-object TriggerEvent / PostEvent: "obj.TriggerEvent("event")"
-    // Must run BEFORE dotcall loop to avoid double-counting
-    const crossTrigRe = /\b(\w+)\.(TriggerEvent|PostEvent)\s*\(\s*["'](\w+)["']/gi;
-    while ((m = crossTrigRe.exec(stripped)) !== null) {
-      const qualifier = m[1].toLowerCase();
-      if (qualifier === 'this') {
-        // this.TriggerEvent("event") → self-trigger, same as bare TriggerEvent("event")
-        sites.push({ kind: m[2].toLowerCase(), targetObject: null, targetMember: m[3], rawText: m[0] });
-      } else if (qualifier === 'parent') {
-        // Parent.TriggerEvent("event") → container window (resolved in analyzer)
-        sites.push({ kind: m[2].toLowerCase(), targetObject: '__parent__', targetMember: m[3], rawText: m[0] });
-      } else if (qualifier === 'super') {
-        // Super.TriggerEvent("event") → parent class in inheritance (resolved in analyzer)
-        sites.push({ kind: m[2].toLowerCase(), targetObject: '__super__', targetMember: m[3], rawText: m[0] });
-      } else if (!this._isBuiltinIdentifier(m[1])) {
-        sites.push({ kind: m[2].toLowerCase(), targetObject: m[1], targetMember: m[3], rawText: m[0] });
-      }
-    }
-
-    // dotcall: identifier.identifier( — skip TriggerEvent/PostEvent (handled above)
-    const dotRe = /\b(\w+)\.(\w+)\s*\(/g;
-    while ((m = dotRe.exec(stripped)) !== null) {
-      if (/^(TriggerEvent|PostEvent)$/i.test(m[2])) continue; // already handled above
-      const qualifier = m[1].toLowerCase();
-      if (qualifier === 'parent') {
-        sites.push({ kind: 'dotcall', targetObject: '__parent__', targetMember: m[2], rawText: m[0] });
-      } else if (qualifier === 'super') {
-        sites.push({ kind: 'dotcall', targetObject: '__super__', targetMember: m[2], rawText: m[0] });
-      } else if (!this._isBuiltinIdentifier(m[1])) {
-        sites.push({ kind: 'dotcall', targetObject: m[1], targetMember: m[2], rawText: m[0] });
-      }
-    }
-
-    // Self TriggerEvent / PostEvent (no object prefix): "TriggerEvent("event")"
-    const selfTrigRe = /(?<![.\w])(TriggerEvent|PostEvent)\s*\(\s*["'](\w+)["']/gi;
-    while ((m = selfTrigRe.exec(stripped)) !== null) {
-      sites.push({
-        kind: m[1].toLowerCase(),
-        targetObject: null, // self
-        targetMember: m[2],
-        rawText: m[0],
-      });
-    }
-
-    // Keyword form: "Trigger Event <name>" / "Post Event <name>" (two words, no quotes, no dot)
-    const kwEventRe = /\b(Trigger|Post)\s+Event\s+(\w+)/gi;
-    while ((m = kwEventRe.exec(stripped)) !== null) {
-      if (!this._isBuiltinIdentifier(m[2])) {
-        sites.push({
-          kind: m[1].toLowerCase() === 'trigger' ? 'triggerevent' : 'postevent',
-          targetObject: null,  // keyword form always targets self in PB
-          targetMember: m[2],
-          rawText: m[0],
-        });
-      }
-    }
-
-    // Call objectvar::eventname
-    const callRe = /\bCall\s+(\w+)::(\w+)\b/gi;
-    while ((m = callRe.exec(stripped)) !== null) {
-      sites.push({
-        kind: 'call',
-        targetObject: m[1],
-        targetMember: m[2],
-        rawText: m[0],
-      });
-    }
-
-    // Bare self-call: funcName( with no preceding dot — calls a method on self
-    // e.g. f_retrieve(dw_get, dw_manut). Resolver filters to only known functions on the object.
-    const bareRe = /(?<![.\w])(\w+)\s*\(/g;
-    while ((m = bareRe.exec(stripped)) !== null) {
-      if (!this._isBuiltinIdentifier(m[1]) && !this._isPBKeyword(m[1])) {
-        sites.push({
-          kind: 'barecall',
-          targetObject: null,  // always self
-          targetMember: m[1],
-          rawText: m[0],
-        });
-      }
-    }
-
-    console.debug(`[PBParser] _extractCallSites: ${sites.length} call site(s) encontrado(s)`);
-    return sites;
+    return this._cse.extractCallSites(body);
   }
 
   // ─── Event stub merging ────────────────────────────────────────────────────
@@ -817,21 +519,7 @@ class PBParser {
     return match ? match[1] : null;
   }
 
-  _normaliseLines(text) {
-    return text
-      .replace(/\r\n/g, '\n')
-      .replace(/\r/g, '\n');
-  }
-
-  /** Removes // line comments from code body. */
-  _stripComments(text) {
-    return text.replace(/\/\/.*$/gm, '');
-  }
-
-  /** Blanks out string literal content so regexes don't match inside strings. */
-  _stripStringLiterals(text) {
-    return text.replace(/"[^"\n]*"/g, match => '"' + ' '.repeat(match.length - 2) + '"');
-  }
+  _normaliseLines(text)        { return StringUtils.normaliseLines(text); }
 
   _inferObjectType(parentName) {
     if (!parentName) return 'unknown';
@@ -844,29 +532,7 @@ class PBParser {
     return 'userobject';
   }
 
-  /** PB keywords and common built-in functions that appear before ( and are not user-defined. */
-  _isPBKeyword(name) {
-    const kw = new Set([
-      'if', 'elseif', 'while', 'until', 'for', 'not', 'return',
-      'choose', 'case', 'try', 'catch', 'throw',
-      'len', 'mid', 'left', 'right', 'upper', 'lower', 'trim', 'pos',
-      'isnull', 'isvalid', 'isdate', 'isnumber',
-      'messagebox', 'open', 'close', 'send',
-      'abs', 'int', 'mod', 'max', 'min', 'round', 'truncate',
-    ]);
-    return kw.has(name.toLowerCase());
-  }
 
-  /** PB built-in identifiers that are false positives for cross-object call detection. */
-  _isBuiltinIdentifier(name) {
-    const builtins = new Set([
-      'this', 'super', 'parent', 'string', 'integer', 'long', 'ulong',
-      'date', 'time', 'datetime', 'boolean', 'double', 'decimal', 'real',
-      'blob', 'any', 'byte', 'char', 'uint', 'longlong', 'powerobject',
-      'window', 'menu', 'datawindow', 'nonvisualobject',
-    ]);
-    return builtins.has(name.toLowerCase());
-  }
 }
 
 window.PBParser = PBParser;
