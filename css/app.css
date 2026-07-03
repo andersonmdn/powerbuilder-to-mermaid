@@ -549,3 +549,20 @@ header p {
   border-color: #86efac;
   cursor: default;
 }
+
+/* ── Call Graph Hover Highlight ──────────────────────────────────────────── */
+#preview-container svg .cg-node,
+#preview-container svg .cg-edge {
+  transition: opacity 0.15s ease;
+}
+
+#preview-container svg .cg-node { cursor: pointer; }
+
+#preview-container svg.cg-hover-active .cg-node,
+#preview-container svg.cg-hover-active .cg-edge {
+  opacity: 0.08;
+}
+
+#preview-container svg.cg-hover-active .cg-highlighted {
+  opacity: 1 !important;
+}

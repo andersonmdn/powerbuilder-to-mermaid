@@ -75,6 +75,10 @@ class ResultsUI {
       const id = 'pb-mermaid-' + Date.now();
       const { svg } = await mermaid.render(id, text);
       container.innerHTML = svg;
+      const svgEl = container.querySelector('svg');
+      if (svgEl && text.trimStart().startsWith('flowchart') && typeof HoverHighlight !== 'undefined') {
+        HoverHighlight.init(svgEl, text);
+      }
     } catch (err) {
       container.innerHTML = `<p class="error-msg">Erro ao renderizar: ${err.message}</p>`;
     }
