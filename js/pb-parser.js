@@ -557,7 +557,15 @@ class PBParser {
     // Must run BEFORE dotcall loop to avoid double-counting
     const crossTrigRe = /\b(\w+)\.(TriggerEvent|PostEvent)\s*\(\s*["'](\w+)["']/gi;
     while ((m = crossTrigRe.exec(stripped)) !== null) {
-      if (!this._isBuiltinIdentifier(m[1])) {
+      if (m[1].toLowerCase() === 'this') {
+        // this.TriggerEvent("event") → self-trigger, same as bare TriggerEvent("event")
+        sites.push({
+          kind: m[2].toLowerCase(),
+          targetObject: null,
+          targetMember: m[3],
+          rawText: m[0],
+        });
+      } else if (!this._isBuiltinIdentifier(m[1])) {
         sites.push({
           kind: m[2].toLowerCase(),   // 'triggerevent' or 'postevent'
           targetObject: m[1],

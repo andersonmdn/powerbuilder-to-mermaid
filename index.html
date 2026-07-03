@@ -33,6 +33,39 @@
     <!-- ── Opções ─────────────────────────────────────────────────────────── -->
     <div class="card">
       <h2>2 · Opções do diagrama</h2>
+
+      <!-- Tipo de diagrama -->
+      <div class="diagram-type-row">
+        <span class="options-label">Tipo de diagrama</span>
+        <label class="radio-item">
+          <input type="radio" name="diagram-type" id="opt-type-class" value="class" checked>
+          Diagrama Estrutural
+        </label>
+        <label class="radio-item">
+          <input type="radio" name="diagram-type" id="opt-type-callgraph" value="callgraph">
+          Grafo de Chamadas
+        </label>
+      </div>
+
+      <!-- Sub-opções do grafo de chamadas (hidden by default) -->
+      <div id="callgraph-options" style="display:none" class="callgraph-suboptions">
+        <div class="suboption-row">
+          <span class="options-label">Direção</span>
+          <label class="radio-item">
+            <input type="radio" name="cg-direction" id="opt-cg-lr" value="LR" checked>
+            Horizontal (LR)
+          </label>
+          <label class="radio-item">
+            <input type="radio" name="cg-direction" id="opt-cg-tb" value="TB">
+            Vertical (TB)
+          </label>
+        </div>
+        <label class="option-item">
+          <input type="checkbox" id="opt-cg-internal" checked>
+          Chamadas internas (mesmo objeto)
+        </label>
+      </div>
+
       <div class="options-grid">
         <label class="option-item">
           <input type="checkbox" id="opt-functions" checked>

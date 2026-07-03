@@ -210,6 +210,20 @@ class PBAnalyzer {
           if (hasFunc) {
             console.log(`[PBAnalyzer] barecall ✔ ${fromObject}.${fromMember} → ${fromObject}.${site.targetMember} (def. em ${foundOn})`);
             crossCalls.push({ fromObject, fromMember, toObject: fromObject, toMember: site.targetMember, callSite: site });
+          } else if (ownerObj.withinName) {
+            // Fallback: control calling a function defined on its parent window
+            const parentObj = objectMap.get(ownerObj.withinName.toLowerCase());
+            if (parentObj) {
+              const parentHas =
+                parentObj.functions.some(f => f.name.toLowerCase() === site.targetMember.toLowerCase()) ||
+                parentObj.prototypes.some(p => p.name.toLowerCase() === site.targetMember.toLowerCase());
+              if (parentHas) {
+                console.log(`[PBAnalyzer] barecall ✔ (janela-pai) ${fromObject}.${fromMember} → ${parentObj.name}.${site.targetMember}`);
+                crossCalls.push({ fromObject, fromMember, toObject: parentObj.name, toMember: site.targetMember, callSite: site });
+              } else {
+                console.log(`[PBAnalyzer] barecall ✘ ${fromObject}.${fromMember} → .${site.targetMember} — não encontrado (global/built-in/não carregado)`);
+              }
+            }
           } else {
             console.log(`[PBAnalyzer] barecall ✘ ${fromObject}.${fromMember} → .${site.targetMember} — não encontrado (global/built-in/não carregado)`);
           }
@@ -222,19 +236,38 @@ class PBAnalyzer {
       const isSelfEventTrigger =
         (site.kind === 'triggerevent' || site.kind === 'postevent') && !site.targetObject;
       if (isSelfEventTrigger) {
-        const resolvedObj = objectMap.get(site.targetMember.toLowerCase());
+        const targetEv = site.targetMember.toLowerCase();
+
+        // Case 1: event name coincides with a loaded object name (cross-object trigger)
+        const resolvedObj = objectMap.get(targetEv);
         if (resolvedObj) {
-          console.log(`[PBAnalyzer] Trigger Event resolvido: ${fromObject}.${fromMember} → ${resolvedObj.name}`);
-          crossCalls.push({
-            fromObject,
-            fromMember,
-            toObject: resolvedObj.name,
-            toMember: site.targetMember,
-            callSite: site,
-          });
-        } else {
-          console.log(`[PBAnalyzer] Trigger Event não resolvido: "${site.targetMember}" chamado em ${fromObject}.${fromMember} — objeto não encontrado no mapa`);
+          console.log(`[PBAnalyzer] Trigger Event resolvido (objeto): ${fromObject}.${fromMember} → ${resolvedObj.name}`);
+          crossCalls.push({ fromObject, fromMember, toObject: resolvedObj.name, toMember: site.targetMember, callSite: site });
+          continue;
         }
+
+        const ownerObj = objectMap.get(fromObject.toLowerCase());
+
+        // Case 2: event belongs to the current object itself
+        const selfHasEvent = ownerObj?.events.some(e => e.name.toLowerCase() === targetEv);
+        if (selfHasEvent) {
+          console.log(`[PBAnalyzer] Trigger Event resolvido (self): ${fromObject}.${fromMember} → ${fromObject}.${site.targetMember}`);
+          crossCalls.push({ fromObject, fromMember, toObject: fromObject, toMember: site.targetMember, callSite: site });
+          continue;
+        }
+
+        // Case 3: control triggering an event on its parent window (withinName)
+        if (ownerObj?.withinName) {
+          const parentObj = objectMap.get(ownerObj.withinName.toLowerCase());
+          const parentHasEvent = parentObj?.events.some(e => e.name.toLowerCase() === targetEv);
+          if (parentHasEvent) {
+            console.log(`[PBAnalyzer] Trigger Event resolvido (janela-pai): ${fromObject}.${fromMember} → ${parentObj.name}.${site.targetMember}`);
+            crossCalls.push({ fromObject, fromMember, toObject: parentObj.name, toMember: site.targetMember, callSite: site });
+            continue;
+          }
+        }
+
+        console.log(`[PBAnalyzer] Trigger Event não resolvido: "${site.targetMember}" chamado em ${fromObject}.${fromMember} — objeto não encontrado no mapa`);
         continue;
       }
 

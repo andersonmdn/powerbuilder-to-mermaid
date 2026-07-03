@@ -22,6 +22,7 @@ const App = (() => {
     _bindTabs();
     _bindCopyButton();
     _bindDownloadButton();
+    _bindDiagramTypeToggle();
   }
 
   function _initMermaid() {
@@ -109,6 +110,15 @@ const App = (() => {
     });
   }
 
+  function _bindDiagramTypeToggle() {
+    document.querySelectorAll('input[name="diagram-type"]').forEach(radio => {
+      radio.addEventListener('change', () => {
+        const isCallGraph = document.getElementById('opt-type-callgraph').checked;
+        document.getElementById('callgraph-options').style.display = isCallGraph ? 'block' : 'none';
+      });
+    });
+  }
+
   // ─── Pipeline ─────────────────────────────────────────────────────────────────
 
   function _bindGenerateButton() {
@@ -146,8 +156,10 @@ const App = (() => {
 
       const options = _getOptions();
       const generator = new MermaidGenerator(options);
-      _generatedText = generator.generate(_analyzedProject);
-      console.log(`[App] Diagrama gerado: ${_generatedText.length} chars`);
+      _generatedText = options.diagramType === 'callgraph'
+        ? generator.generateCallGraph(_analyzedProject)
+        : generator.generate(_analyzedProject);
+      console.log(`[App] Diagrama gerado (${options.diagramType}): ${_generatedText.length} chars`);
 
       _showResults();
       _showStatus('Concluído!', 'success');
@@ -168,6 +180,10 @@ const App = (() => {
       const el = document.getElementById(id);
       return el ? el.checked : true;
     };
+    const radioVal = name => {
+      const el = document.querySelector(`input[name="${name}"]:checked`);
+      return el ? el.value : null;
+    };
     return {
       includeVariables:   checked('opt-variables'),
       includeControls:    checked('opt-controls'),
@@ -175,6 +191,9 @@ const App = (() => {
       includeEvents:      checked('opt-events'),
       includeFunctions:   checked('opt-functions'),
       showBuiltinParents: checked('opt-builtins'),
+      diagramType:          radioVal('diagram-type')  ?? 'class',
+      callGraphDirection:   radioVal('cg-direction')  ?? 'LR',
+      includeInternalCalls: checked('opt-cg-internal'),
     };
   }
 

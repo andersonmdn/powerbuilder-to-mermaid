@@ -24,6 +24,9 @@ class MermaidGenerator {
       includeFunctions:   options.includeFunctions   ?? true,
       showBuiltinParents: options.showBuiltinParents ?? false,
       maxLabelLength:     options.maxLabelLength     ?? 80,
+      diagramType:          options.diagramType          ?? 'class',
+      callGraphDirection:   options.callGraphDirection   ?? 'LR',
+      includeInternalCalls: options.includeInternalCalls ?? true,
     };
   }
 
@@ -79,6 +82,56 @@ class MermaidGenerator {
 
     console.log(`[MermaidGenerator] Saída total: ${lines.length} linhas`);
     console.groupEnd();
+    return lines.join('\n');
+  }
+
+  /**
+   * @param {AnalyzedProject} project
+   * @returns {string} - complete Mermaid flowchart text (call graph)
+   */
+  generateCallGraph(project) {
+    const calls = this._opts.includeInternalCalls
+      ? project.crossObjectCalls
+      : project.crossObjectCalls.filter(c => c.fromObject !== c.toObject);
+
+    if (!calls.length) {
+      return `flowchart ${this._opts.callGraphDirection}\n    empty["Nenhuma chamada encontrada"]`;
+    }
+
+    const lines = [`flowchart ${this._opts.callGraphDirection}`];
+
+    // Coletar nós por objeto
+    const nodesByObj = new Map();
+    for (const c of calls) {
+      for (const [obj, member] of [[c.fromObject, c.fromMember], [c.toObject, c.toMember]]) {
+        if (!nodesByObj.has(obj)) nodesByObj.set(obj, new Map());
+        const nid = this._nodeId(obj, member);
+        nodesByObj.get(obj).set(nid, this._nodeLabel(obj, member));
+      }
+    }
+
+    // Subgrafos por objeto
+    for (const [obj, nodes] of nodesByObj) {
+      lines.push('');
+      lines.push(`  subgraph ${this._sanitiseName(obj)}["${obj}"]`);
+      for (const [nid, label] of nodes) {
+        lines.push(`    ${nid}["${label}"]`);
+      }
+      lines.push('  end');
+    }
+
+    // Arestas (deduplicadas)
+    lines.push('');
+    const seen = new Set();
+    for (const c of calls) {
+      const from = this._nodeId(c.fromObject, c.fromMember);
+      const to   = this._nodeId(c.toObject,   c.toMember);
+      const key  = `${from}-->${to}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      lines.push(`  ${from} --> ${to}`);
+    }
+
     return lines.join('\n');
   }
 
@@ -235,6 +288,14 @@ class MermaidGenerator {
       .replace(/>/g, '~gt~')
       .replace(/"/g, "'")
       .replace(/:/g, ' -');
+  }
+
+  _nodeId(obj, member) {
+    return this._sanitiseName(obj) + '__' + this._sanitiseName(member);
+  }
+
+  _nodeLabel(obj, member) {
+    return `${obj}.${member}`;
   }
 
   _truncate(text, max) {

@@ -333,3 +333,53 @@ header p {
 /* ── Messages ────────────────────────────────────────────────────────────── */
 .error-msg { color: #ef4444; padding: 16px; }
 .info-msg  { color: #888;    padding: 16px; }
+
+/* ── Diagram Type Selector ───────────────────────────────────────────────── */
+.diagram-type-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 14px;
+  flex-wrap: wrap;
+}
+
+.options-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: #555;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  white-space: nowrap;
+}
+
+.radio-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.radio-item input[type="radio"] {
+  width: 16px;
+  height: 16px;
+  accent-color: #4a7ef7;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.callgraph-suboptions {
+  border-left: 3px solid #4a7ef7;
+  padding-left: 14px;
+  margin-bottom: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.suboption-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
