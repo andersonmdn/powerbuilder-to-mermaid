@@ -59,6 +59,11 @@ class ResultsUI {
     const container = document.getElementById('preview-container');
     if (!container) return;
 
+    if (this._previewController) {
+      this._previewController.dispose();
+      this._previewController = null;
+    }
+
     if (typeof mermaid === 'undefined') {
       container.innerHTML = '<p class="error-msg">Mermaid.js não carregado — verifique conexão com a internet para CDN.</p>';
       return;
@@ -78,6 +83,9 @@ class ResultsUI {
       const svgEl = container.querySelector('svg');
       if (svgEl && text.trimStart().startsWith('flowchart') && typeof HoverHighlight !== 'undefined') {
         HoverHighlight.init(svgEl, text);
+      }
+      if (svgEl && typeof PreviewController !== 'undefined') {
+        this._previewController = PreviewController.attach(container, svgEl, text);
       }
     } catch (err) {
       container.innerHTML = `<p class="error-msg">Erro ao renderizar: ${err.message}</p>`;
