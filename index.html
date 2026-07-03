@@ -48,9 +48,9 @@
       </div>
 
       <!-- Sub-opções do grafo de chamadas (hidden by default) -->
-      <div id="callgraph-options" style="display:none" class="callgraph-suboptions">
+      <div id="callgraph-options" style="display:none" class="diagram-suboptions">
         <div class="suboption-row">
-          <span class="options-label">Direção</span>
+          <span class="options-label">Direção do layout</span>
           <label class="radio-item">
             <input type="radio" name="cg-direction" id="opt-cg-lr" value="LR" checked>
             Horizontal (LR)
@@ -62,35 +62,47 @@
         </div>
         <label class="option-item">
           <input type="checkbox" id="opt-cg-internal" checked>
-          Chamadas internas (mesmo objeto)
+          Chamadas internas (entre membros do mesmo objeto)
+        </label>
+        <label class="option-item">
+          <input type="checkbox" id="opt-cg-unresolved">
+          Chamadas não resolvidas (objetos externos / não carregados)
+        </label>
+        <label class="option-item">
+          <input type="checkbox" id="opt-cg-orphans">
+          Funções e eventos sem nenhuma chamada (nós isolados)
         </label>
       </div>
 
-      <div class="options-grid">
-        <label class="option-item">
-          <input type="checkbox" id="opt-functions" checked>
-          Funções e Subroutines
-        </label>
-        <label class="option-item">
-          <input type="checkbox" id="opt-events" checked>
-          Eventos
-        </label>
-        <label class="option-item">
-          <input type="checkbox" id="opt-variables">
-          Variáveis de instância
-        </label>
-        <label class="option-item">
-          <input type="checkbox" id="opt-controls" checked>
-          Controles (containment)
-        </label>
-        <label class="option-item">
-          <input type="checkbox" id="opt-calls" checked>
-          Chamadas cross-objeto
-        </label>
-        <label class="option-item">
-          <input type="checkbox" id="opt-builtins">
-          Herança de tipos built-in PB
-        </label>
+      <!-- Sub-opções do diagrama estrutural (visível por padrão) -->
+      <div id="class-diagram-options" class="diagram-suboptions">
+        <span class="options-label">Exibir no diagrama</span>
+        <div class="options-grid">
+          <label class="option-item">
+            <input type="checkbox" id="opt-functions" checked>
+            Funções e Subroutines
+          </label>
+          <label class="option-item">
+            <input type="checkbox" id="opt-events" checked>
+            Eventos
+          </label>
+          <label class="option-item">
+            <input type="checkbox" id="opt-variables">
+            Variáveis de instância
+          </label>
+          <label class="option-item">
+            <input type="checkbox" id="opt-controls" checked>
+            Controles (containment)
+          </label>
+          <label class="option-item">
+            <input type="checkbox" id="opt-calls" checked>
+            Chamadas entre objetos
+          </label>
+          <label class="option-item">
+            <input type="checkbox" id="opt-builtins">
+            Herança de tipos built-in PB
+          </label>
+        </div>
       </div>
     </div>
 

@@ -114,7 +114,8 @@ const App = (() => {
     document.querySelectorAll('input[name="diagram-type"]').forEach(radio => {
       radio.addEventListener('change', () => {
         const isCallGraph = document.getElementById('opt-type-callgraph').checked;
-        document.getElementById('callgraph-options').style.display = isCallGraph ? 'block' : 'none';
+        document.getElementById('callgraph-options').style.display = isCallGraph ? 'flex' : 'none';
+        document.getElementById('class-diagram-options').style.display = isCallGraph ? 'none' : 'flex';
       });
     });
   }
@@ -191,9 +192,11 @@ const App = (() => {
       includeEvents:      checked('opt-events'),
       includeFunctions:   checked('opt-functions'),
       showBuiltinParents: checked('opt-builtins'),
-      diagramType:          radioVal('diagram-type')  ?? 'class',
-      callGraphDirection:   radioVal('cg-direction')  ?? 'LR',
-      includeInternalCalls: checked('opt-cg-internal'),
+      diagramType:            radioVal('diagram-type')  ?? 'class',
+      callGraphDirection:     radioVal('cg-direction')  ?? 'LR',
+      includeInternalCalls:   checked('opt-cg-internal'),
+      includeUnresolvedCalls: checked('opt-cg-unresolved'),
+      includeOrphanNodes:     checked('opt-cg-orphans'),
     };
   }
 

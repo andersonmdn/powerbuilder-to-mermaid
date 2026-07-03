@@ -368,7 +368,7 @@ header p {
   flex-shrink: 0;
 }
 
-.callgraph-suboptions {
+.diagram-suboptions {
   border-left: 3px solid #4a7ef7;
   padding-left: 14px;
   margin-bottom: 14px;

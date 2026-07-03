@@ -136,20 +136,28 @@ class PBAnalyzer {
 
       // Resolve from function bodies
       for (const func of obj.functions) {
+        const scopedVarMap = new Map(varTypeMap);
+        for (const p of (func.params || [])) {
+          if (p.name && p.typeName) scopedVarMap.set(p.name.toLowerCase(), p.typeName.toLowerCase());
+        }
         console.log(`[PBAnalyzer] Resolvendo função ${obj.name}.${func.name}: ${func.callSites.length} call site(s)`);
         this._resolveFromMember(
           func.callSites, obj.name, func.name,
-          objectMap, varTypeMap, crossObjectCalls, unresolvedCalls
+          objectMap, scopedVarMap, crossObjectCalls, unresolvedCalls
         );
       }
 
       // Resolve from event bodies
       for (const event of obj.events) {
         if (!event.body) continue;
+        const scopedVarMap = new Map(varTypeMap);
+        for (const p of (event.params || [])) {
+          if (p.name && p.typeName) scopedVarMap.set(p.name.toLowerCase(), p.typeName.toLowerCase());
+        }
         console.log(`[PBAnalyzer] Resolvendo evento ${obj.name}.${event.name}: ${event.callSites.length} call site(s)`);
         this._resolveFromMember(
           event.callSites, obj.name, event.name,
-          objectMap, varTypeMap, crossObjectCalls, unresolvedCalls
+          objectMap, scopedVarMap, crossObjectCalls, unresolvedCalls
         );
       }
     }
@@ -265,6 +273,14 @@ class PBAnalyzer {
             crossCalls.push({ fromObject, fromMember, toObject: parentObj.name, toMember: site.targetMember, callSite: site });
             continue;
           }
+        }
+
+        // Case 4: event stub on current object (declared in type...end type but not yet implemented)
+        const selfHasStub = ownerObj?.eventStubs?.some(s => s.name.toLowerCase() === targetEv);
+        if (selfHasStub) {
+          console.log(`[PBAnalyzer] Trigger Event resolvido (stub): ${fromObject}.${fromMember} → ${fromObject}.${site.targetMember}`);
+          crossCalls.push({ fromObject, fromMember, toObject: fromObject, toMember: site.targetMember, callSite: site });
+          continue;
         }
 
         console.log(`[PBAnalyzer] Trigger Event não resolvido: "${site.targetMember}" chamado em ${fromObject}.${fromMember} — objeto não encontrado no mapa`);

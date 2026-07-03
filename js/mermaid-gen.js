@@ -24,9 +24,11 @@ class MermaidGenerator {
       includeFunctions:   options.includeFunctions   ?? true,
       showBuiltinParents: options.showBuiltinParents ?? false,
       maxLabelLength:     options.maxLabelLength     ?? 80,
-      diagramType:          options.diagramType          ?? 'class',
-      callGraphDirection:   options.callGraphDirection   ?? 'LR',
-      includeInternalCalls: options.includeInternalCalls ?? true,
+      diagramType:            options.diagramType            ?? 'class',
+      callGraphDirection:     options.callGraphDirection     ?? 'LR',
+      includeInternalCalls:   options.includeInternalCalls   ?? true,
+      includeUnresolvedCalls: options.includeUnresolvedCalls ?? false,
+      includeOrphanNodes:     options.includeOrphanNodes     ?? false,
     };
   }
 
@@ -94,14 +96,20 @@ class MermaidGenerator {
       ? project.crossObjectCalls
       : project.crossObjectCalls.filter(c => c.fromObject !== c.toObject);
 
-    if (!calls.length) {
+    const unresolvedList = this._opts.includeUnresolvedCalls
+      ? (project.unresolvedCalls || [])
+      : [];
+
+    if (!calls.length && !unresolvedList.length) {
       return `flowchart ${this._opts.callGraphDirection}\n    empty["Nenhuma chamada encontrada"]`;
     }
 
     const lines = [`flowchart ${this._opts.callGraphDirection}`];
 
-    // Coletar nós por objeto
-    const nodesByObj = new Map();
+    // Phase 1: Collect nodes
+    const nodesByObj    = new Map(); // all objects: objName → Map<nodeId, label>
+    const externalNodeIds = new Set(); // nodeIds that are unresolved (need :::external style)
+
     for (const c of calls) {
       for (const [obj, member] of [[c.fromObject, c.fromMember], [c.toObject, c.toMember]]) {
         if (!nodesByObj.has(obj)) nodesByObj.set(obj, new Map());
@@ -110,19 +118,51 @@ class MermaidGenerator {
       }
     }
 
-    // Subgrafos por objeto
+    for (const u of unresolvedList) {
+      // Origin node (may already exist from crossObjectCalls)
+      if (!nodesByObj.has(u.fromObject)) nodesByObj.set(u.fromObject, new Map());
+      const fnid = this._nodeId(u.fromObject, u.fromMember);
+      nodesByObj.get(u.fromObject).set(fnid, this._nodeLabel(u.fromObject, u.fromMember));
+
+      // External target: goes into its own object subgraph, marked as external
+      const toObj    = u.targetObject || '?';
+      const toMember = u.targetMember || '?';
+      const tnid = 'ext__' + this._nodeId(toObj, toMember);
+      if (!nodesByObj.has(toObj)) nodesByObj.set(toObj, new Map());
+      nodesByObj.get(toObj).set(tnid, this._nodeLabel(toObj, toMember));
+      externalNodeIds.add(tnid);
+    }
+
+    if (this._opts.includeOrphanNodes) {
+      for (const obj of project.objects.values()) {
+        for (const func of obj.functions) {
+          if (!nodesByObj.has(obj.name)) nodesByObj.set(obj.name, new Map());
+          const nid = this._nodeId(obj.name, func.name);
+          nodesByObj.get(obj.name).set(nid, this._nodeLabel(obj.name, func.name));
+        }
+        for (const event of obj.events) {
+          if (!nodesByObj.has(obj.name)) nodesByObj.set(obj.name, new Map());
+          const nid = this._nodeId(obj.name, event.name);
+          nodesByObj.get(obj.name).set(nid, this._nodeLabel(obj.name, event.name));
+        }
+      }
+    }
+
+    // Phase 2: Emit subgraphs (loaded and external objects share the same structure)
     for (const [obj, nodes] of nodesByObj) {
       lines.push('');
       lines.push(`  subgraph ${this._sanitiseName(obj)}["${obj}"]`);
       for (const [nid, label] of nodes) {
-        lines.push(`    ${nid}["${label}"]`);
+        const cls = externalNodeIds.has(nid) ? ':::external' : '';
+        lines.push(`    ${nid}["${label}"]${cls}`);
       }
       lines.push('  end');
     }
 
-    // Arestas (deduplicadas)
+    // Phase 3: Emit edges (deduped)
     lines.push('');
     const seen = new Set();
+
     for (const c of calls) {
       const from = this._nodeId(c.fromObject, c.fromMember);
       const to   = this._nodeId(c.toObject,   c.toMember);
@@ -130,6 +170,22 @@ class MermaidGenerator {
       if (seen.has(key)) continue;
       seen.add(key);
       lines.push(`  ${from} --> ${to}`);
+    }
+
+    for (const u of unresolvedList) {
+      const from     = this._nodeId(u.fromObject, u.fromMember);
+      const toObj    = u.targetObject || '?';
+      const toMember = u.targetMember || '?';
+      const to       = 'ext__' + this._nodeId(toObj, toMember);
+      const key      = `${from}-..->${to}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      lines.push(`  ${from} -.-> ${to}`);
+    }
+
+    if (externalNodeIds.size) {
+      lines.push('');
+      lines.push('  classDef external fill:#fff8e1,stroke:#f9a825,stroke-width:1px,color:#5d4037');
     }
 
     return lines.join('\n');
