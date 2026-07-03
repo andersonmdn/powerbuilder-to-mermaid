@@ -64,6 +64,7 @@ class PBParser {
       PROTOTYPES: 'prototypes',
       FUNCTION: 'function',
       EVENT: 'event',
+      INLINE_EVENT: 'inline_event',
     };
 
     let state = STATE.OTHER;
@@ -103,6 +104,12 @@ class PBParser {
           } else if (/^on\s+\w+\.\w+/i.test(trimmed)) {
             emit(STATE.OTHER, {});
             state = STATE.EVENT;
+            buffer.push(line);
+          } else if (/^event\b/i.test(trimmed)) {
+            // Inline event implementation: "event name() ... end event"
+            // (event stubs inside type...end type are handled in STATE.TYPEDECL)
+            emit(STATE.OTHER, {});
+            state = STATE.INLINE_EVENT;
             buffer.push(line);
           } else {
             buffer.push(line);
@@ -166,6 +173,15 @@ class PBParser {
           }
           break;
         }
+
+        case STATE.INLINE_EVENT: {
+          buffer.push(line);
+          if (/^end\s+event\s*$/i.test(trimmed)) {
+            emit(STATE.INLINE_EVENT, {});
+            state = STATE.OTHER;
+          }
+          break;
+        }
       }
     }
 
@@ -188,6 +204,7 @@ class PBParser {
       case 'prototypes':   return this._processPrototypes(block.text, objectMap);
       case 'function':     return this._processFunctionBlock(block.text, objectMap);
       case 'event':        return this._processEventBlock(block.text, objectMap);
+      case 'inline_event': return this._processInlineEventBlock(block.text, objectMap);
     }
   }
 
@@ -381,6 +398,70 @@ class PBParser {
     ownerObj.events.push(event);
   }
 
+  /**
+   * Parses an inline "event name() ... end event" block.
+   * Owner is the last non-control object in the map (same heuristic as type variables).
+   * Header forms:
+   *   event name() ; local_var_decls
+   *   event type returnType name() ; local_var_decls
+   *   event name ; body_start
+   *   event name
+   */
+  _processInlineEventBlock(text, objectMap) {
+    const lines = text.split('\n');
+    if (!lines.length) return;
+
+    const headerLine = lines[0].trim();
+    let name, params = [];
+
+    // "event type returnType name(params)"
+    const typedMatch = headerLine.match(/^event\s+type\s+\w+\s+(\w+)\s*\(([^)]*)\)/i);
+    if (typedMatch) {
+      name = typedMatch[1];
+      params = this._parseParamList(typedMatch[2]);
+    } else {
+      // "event name(params)"
+      const parenMatch = headerLine.match(/^event\s+(\w+)\s*\(([^)]*)\)/i);
+      if (parenMatch) {
+        name = parenMatch[1];
+        params = this._parseParamList(parenMatch[2]);
+      } else {
+        // "event name ; ..." or "event name"
+        const simpleMatch = headerLine.match(/^event\s+(\w+)/i);
+        if (simpleMatch) name = simpleMatch[1];
+      }
+    }
+
+    if (!name) {
+      console.warn(`[PBParser] _processInlineEventBlock: header não parseado →`, headerLine);
+      return;
+    }
+
+    // Include any body content on the header line (after the signature) + middle lines
+    const headerSuffix = headerLine.replace(/^event\s+(?:type\s+\w+\s+)?\w+(?:\s*\([^)]*\))?\s*;?\s*/i, '');
+    const body = [headerSuffix, ...lines.slice(1, -1)].join('\n');
+
+    const ownerObj = this._getLastObject(objectMap);
+    if (!ownerObj) {
+      console.warn(`[PBParser] _processInlineEventBlock: sem dono para evento "${name}"`);
+      return;
+    }
+
+    const callSites = this._extractCallSites(body);
+    console.log(`[PBParser] Evento "${ownerObj.name}.${name}" → body ${body.length} chars, ${callSites.length} call site(s)`);
+    if (callSites.length > 0) {
+      console.log(`  └─ call sites:`, callSites.map(s => `${s.kind}:${s.targetObject || 'self'}.${s.targetMember}`));
+    }
+
+    ownerObj.events.push({
+      ownerName: ownerObj.name,
+      name,
+      params,
+      body,
+      callSites,
+    });
+  }
+
   // ─── Line-level parsers ────────────────────────────────────────────────────
 
   /**
@@ -557,35 +638,32 @@ class PBParser {
     // Must run BEFORE dotcall loop to avoid double-counting
     const crossTrigRe = /\b(\w+)\.(TriggerEvent|PostEvent)\s*\(\s*["'](\w+)["']/gi;
     while ((m = crossTrigRe.exec(stripped)) !== null) {
-      if (m[1].toLowerCase() === 'this') {
+      const qualifier = m[1].toLowerCase();
+      if (qualifier === 'this') {
         // this.TriggerEvent("event") → self-trigger, same as bare TriggerEvent("event")
-        sites.push({
-          kind: m[2].toLowerCase(),
-          targetObject: null,
-          targetMember: m[3],
-          rawText: m[0],
-        });
+        sites.push({ kind: m[2].toLowerCase(), targetObject: null, targetMember: m[3], rawText: m[0] });
+      } else if (qualifier === 'parent') {
+        // Parent.TriggerEvent("event") → container window (resolved in analyzer)
+        sites.push({ kind: m[2].toLowerCase(), targetObject: '__parent__', targetMember: m[3], rawText: m[0] });
+      } else if (qualifier === 'super') {
+        // Super.TriggerEvent("event") → parent class in inheritance (resolved in analyzer)
+        sites.push({ kind: m[2].toLowerCase(), targetObject: '__super__', targetMember: m[3], rawText: m[0] });
       } else if (!this._isBuiltinIdentifier(m[1])) {
-        sites.push({
-          kind: m[2].toLowerCase(),   // 'triggerevent' or 'postevent'
-          targetObject: m[1],
-          targetMember: m[3],
-          rawText: m[0],
-        });
+        sites.push({ kind: m[2].toLowerCase(), targetObject: m[1], targetMember: m[3], rawText: m[0] });
       }
     }
 
     // dotcall: identifier.identifier( — skip TriggerEvent/PostEvent (handled above)
     const dotRe = /\b(\w+)\.(\w+)\s*\(/g;
     while ((m = dotRe.exec(stripped)) !== null) {
-      if (!this._isBuiltinIdentifier(m[1]) &&
-          !/^(TriggerEvent|PostEvent)$/i.test(m[2])) {
-        sites.push({
-          kind: 'dotcall',
-          targetObject: m[1],
-          targetMember: m[2],
-          rawText: m[0],
-        });
+      if (/^(TriggerEvent|PostEvent)$/i.test(m[2])) continue; // already handled above
+      const qualifier = m[1].toLowerCase();
+      if (qualifier === 'parent') {
+        sites.push({ kind: 'dotcall', targetObject: '__parent__', targetMember: m[2], rawText: m[0] });
+      } else if (qualifier === 'super') {
+        sites.push({ kind: 'dotcall', targetObject: '__super__', targetMember: m[2], rawText: m[0] });
+      } else if (!this._isBuiltinIdentifier(m[1])) {
+        sites.push({ kind: 'dotcall', targetObject: m[1], targetMember: m[2], rawText: m[0] });
       }
     }
 

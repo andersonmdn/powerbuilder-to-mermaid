@@ -106,6 +106,38 @@
       </div>
     </div>
 
+    <!-- ── Filtros avançados ────────────────────────────────────────────────── -->
+    <div class="card">
+      <h2>3 · Filtros avançados</h2>
+
+      <!-- Grupos de filtro via JSON -->
+      <div class="diagram-suboptions filter-groups-section">
+        <div class="filter-groups-header">
+          <span class="options-label">Grupos de filtro</span>
+          <label class="btn-load-group">
+            + Carregar grupo (.json)
+            <input type="file" id="filter-group-input" accept=".json" multiple style="display:none">
+          </label>
+        </div>
+        <span class="options-hint">
+          Ative predefinições abaixo ou carregue seus próprios arquivos <code>.json</code>.
+          Grupos marcados são excluídos do mapeamento. Persistem entre sessões.
+          Formato: <code>{"name":"DW","members":["AcceptText","SetRedraw"]}</code>
+        </span>
+        <div id="filter-presets-row"></div>
+        <div id="filter-group-list"></div>
+      </div>
+
+      <!-- Ignorar avulso (JSON manual) -->
+      <div class="diagram-suboptions ignore-config-section">
+        <span class="options-label">Ignorar chamadas — avulso (JSON)</span>
+        <textarea id="opt-ignore-json" rows="2"
+          placeholder='{"ignoredCallTargets":["AcceptText","Describe","Modify","SetRedraw"]}'
+        ></textarea>
+        <span class="options-hint">Adições pontuais. Mesclado com os grupos acima.</span>
+      </div>
+    </div>
+
     <!-- ── Gerar ──────────────────────────────────────────────────────────── -->
     <div class="card">
       <div class="action-row">
@@ -155,6 +187,7 @@
   <script src="js/pb-parser.js"></script>
   <script src="js/pb-analyzer.js"></script>
   <script src="js/mermaid-gen.js"></script>
+  <script src="js/filter-presets.js"></script>
   <script src="js/app.js"></script>
 </body>
 </html>

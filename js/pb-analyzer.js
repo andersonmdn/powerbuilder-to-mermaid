@@ -201,13 +201,13 @@ class PBAnalyzer {
         const ownerObj = objectMap.get(fromObject.toLowerCase());
         if (ownerObj) {
           let searchObj = ownerObj;
-          let hasFunc = false;
+          let foundMember = null;
           let foundOn = null;
-          while (searchObj && !hasFunc) {
-            hasFunc =
-              searchObj.functions.some(f  => f.name.toLowerCase()  === site.targetMember.toLowerCase()) ||
-              searchObj.prototypes.some(p => p.name.toLowerCase() === site.targetMember.toLowerCase());
-            if (hasFunc) {
+          while (searchObj && !foundMember) {
+            foundMember =
+              searchObj.functions.find(f  => f.name.toLowerCase()  === site.targetMember.toLowerCase()) ||
+              searchObj.prototypes.find(p => p.name.toLowerCase() === site.targetMember.toLowerCase());
+            if (foundMember) {
               foundOn = searchObj.name;
             } else if (searchObj.parentName && !this._isBuiltin(searchObj.parentName)) {
               searchObj = objectMap.get(searchObj.parentName.toLowerCase());
@@ -215,19 +215,19 @@ class PBAnalyzer {
               break;
             }
           }
-          if (hasFunc) {
-            console.log(`[PBAnalyzer] barecall ✔ ${fromObject}.${fromMember} → ${fromObject}.${site.targetMember} (def. em ${foundOn})`);
-            crossCalls.push({ fromObject, fromMember, toObject: fromObject, toMember: site.targetMember, callSite: site });
+          if (foundMember) {
+            console.log(`[PBAnalyzer] barecall ✔ ${fromObject}.${fromMember} → ${fromObject}.${foundMember.name} (def. em ${foundOn})`);
+            crossCalls.push({ fromObject, fromMember, toObject: fromObject, toMember: foundMember.name, callSite: site });
           } else if (ownerObj.withinName) {
             // Fallback: control calling a function defined on its parent window
             const parentObj = objectMap.get(ownerObj.withinName.toLowerCase());
             if (parentObj) {
-              const parentHas =
-                parentObj.functions.some(f => f.name.toLowerCase() === site.targetMember.toLowerCase()) ||
-                parentObj.prototypes.some(p => p.name.toLowerCase() === site.targetMember.toLowerCase());
-              if (parentHas) {
-                console.log(`[PBAnalyzer] barecall ✔ (janela-pai) ${fromObject}.${fromMember} → ${parentObj.name}.${site.targetMember}`);
-                crossCalls.push({ fromObject, fromMember, toObject: parentObj.name, toMember: site.targetMember, callSite: site });
+              const parentMember =
+                parentObj.functions.find(f => f.name.toLowerCase() === site.targetMember.toLowerCase()) ||
+                parentObj.prototypes.find(p => p.name.toLowerCase() === site.targetMember.toLowerCase());
+              if (parentMember) {
+                console.log(`[PBAnalyzer] barecall ✔ (janela-pai) ${fromObject}.${fromMember} → ${parentObj.name}.${parentMember.name}`);
+                crossCalls.push({ fromObject, fromMember, toObject: parentObj.name, toMember: parentMember.name, callSite: site });
               } else {
                 console.log(`[PBAnalyzer] barecall ✘ ${fromObject}.${fromMember} → .${site.targetMember} — não encontrado (global/built-in/não carregado)`);
               }
@@ -257,30 +257,51 @@ class PBAnalyzer {
         const ownerObj = objectMap.get(fromObject.toLowerCase());
 
         // Case 2: event belongs to the current object itself
-        const selfHasEvent = ownerObj?.events.some(e => e.name.toLowerCase() === targetEv);
-        if (selfHasEvent) {
-          console.log(`[PBAnalyzer] Trigger Event resolvido (self): ${fromObject}.${fromMember} → ${fromObject}.${site.targetMember}`);
-          crossCalls.push({ fromObject, fromMember, toObject: fromObject, toMember: site.targetMember, callSite: site });
+        const selfEv = ownerObj?.events.find(e => e.name.toLowerCase() === targetEv);
+        if (selfEv) {
+          console.log(`[PBAnalyzer] Trigger Event resolvido (self): ${fromObject}.${fromMember} → ${fromObject}.${selfEv.name}`);
+          crossCalls.push({ fromObject, fromMember, toObject: fromObject, toMember: selfEv.name, callSite: site });
           continue;
         }
 
         // Case 3: control triggering an event on its parent window (withinName)
         if (ownerObj?.withinName) {
           const parentObj = objectMap.get(ownerObj.withinName.toLowerCase());
-          const parentHasEvent = parentObj?.events.some(e => e.name.toLowerCase() === targetEv);
-          if (parentHasEvent) {
-            console.log(`[PBAnalyzer] Trigger Event resolvido (janela-pai): ${fromObject}.${fromMember} → ${parentObj.name}.${site.targetMember}`);
-            crossCalls.push({ fromObject, fromMember, toObject: parentObj.name, toMember: site.targetMember, callSite: site });
+          const parentEv = parentObj?.events.find(e => e.name.toLowerCase() === targetEv);
+          if (parentEv) {
+            console.log(`[PBAnalyzer] Trigger Event resolvido (janela-pai): ${fromObject}.${fromMember} → ${parentObj.name}.${parentEv.name}`);
+            crossCalls.push({ fromObject, fromMember, toObject: parentObj.name, toMember: parentEv.name, callSite: site });
             continue;
           }
         }
 
         // Case 4: event stub on current object (declared in type...end type but not yet implemented)
-        const selfHasStub = ownerObj?.eventStubs?.some(s => s.name.toLowerCase() === targetEv);
-        if (selfHasStub) {
-          console.log(`[PBAnalyzer] Trigger Event resolvido (stub): ${fromObject}.${fromMember} → ${fromObject}.${site.targetMember}`);
-          crossCalls.push({ fromObject, fromMember, toObject: fromObject, toMember: site.targetMember, callSite: site });
+        const selfStub = ownerObj?.eventStubs?.find(s => s.name.toLowerCase() === targetEv);
+        if (selfStub) {
+          console.log(`[PBAnalyzer] Trigger Event resolvido (stub): ${fromObject}.${fromMember} → ${fromObject}.${selfStub.name}`);
+          crossCalls.push({ fromObject, fromMember, toObject: fromObject, toMember: selfStub.name, callSite: site });
           continue;
+        }
+
+        // Case 5: walk inheritance chain — event/stub may be defined on an ancestor class
+        {
+          let ancestor = ownerObj?.parentName && !this._isBuiltin(ownerObj.parentName)
+            ? objectMap.get(ownerObj.parentName.toLowerCase()) : null;
+          let foundInChain = false;
+          while (ancestor && !foundInChain) {
+            const ancEv =
+              ancestor.events.find(e => e.name.toLowerCase() === targetEv) ||
+              ancestor.eventStubs?.find(s => s.name.toLowerCase() === targetEv);
+            if (ancEv) {
+              console.log(`[PBAnalyzer] Trigger Event resolvido (herança): ${fromObject}.${fromMember} → ${fromObject}.${ancEv.name} (def. em ${ancestor.name})`);
+              crossCalls.push({ fromObject, fromMember, toObject: fromObject, toMember: ancEv.name, callSite: site });
+              foundInChain = true;
+            } else {
+              ancestor = ancestor.parentName && !this._isBuiltin(ancestor.parentName)
+                ? objectMap.get(ancestor.parentName.toLowerCase()) : null;
+            }
+          }
+          if (foundInChain) continue;
         }
 
         console.log(`[PBAnalyzer] Trigger Event não resolvido: "${site.targetMember}" chamado em ${fromObject}.${fromMember} — objeto não encontrado no mapa`);
@@ -288,30 +309,57 @@ class PBAnalyzer {
       }
 
       if (hasCrossTarget) {
-        const targetKey = site.targetObject.toLowerCase();
-        // Step 1: direct lookup by object/control name
-        let resolvedObj = objectMap.get(targetKey);
-        // Step 2: resolve via instance variable type (e.g. iu_service → u_retrieve_dados)
-        if (!resolvedObj) {
-          const varType = varTypeMap.get(targetKey);
-          if (varType) {
-            resolvedObj = objectMap.get(varType);
-            if (resolvedObj) console.log(`[PBAnalyzer] dotcall ✔ via varTypeMap: ${fromObject}.${fromMember} → ${targetKey}(=${varType}) → ${resolvedObj.name}.${site.targetMember}`);
+        const ownerObjForCross = objectMap.get(fromObject.toLowerCase());
+        // Resolve PB keyword qualifiers to concrete objects
+        let resolvedObj;
+        if (site.targetObject === '__parent__') {
+          // Parent = container window for controls
+          if (ownerObjForCross?.withinName) {
+            resolvedObj = objectMap.get(ownerObjForCross.withinName.toLowerCase());
+            if (resolvedObj) console.log(`[PBAnalyzer] Parent resolvido: ${fromObject}.${fromMember} → ${resolvedObj.name}.${site.targetMember}`);
           }
-        } else {
-          console.log(`[PBAnalyzer] dotcall ✔ direto: ${fromObject}.${fromMember} → ${resolvedObj.name}.${site.targetMember}`);
+        } else if (site.targetObject === '__super__') {
+          // Super = direct parent class in inheritance chain
+          if (ownerObjForCross?.parentName && !this._isBuiltin(ownerObjForCross.parentName)) {
+            resolvedObj = objectMap.get(ownerObjForCross.parentName.toLowerCase());
+            if (resolvedObj) console.log(`[PBAnalyzer] Super resolvido: ${fromObject}.${fromMember} → ${resolvedObj.name}.${site.targetMember}`);
+          }
+        }
+
+        if (!resolvedObj) {
+          const targetKey = site.targetObject.toLowerCase();
+          // Step 1: direct lookup by object/control name
+          resolvedObj = objectMap.get(targetKey);
+          // Step 2: resolve via instance variable type (e.g. iu_service → u_retrieve_dados)
+          if (!resolvedObj) {
+            const varType = varTypeMap.get(targetKey);
+            if (varType) {
+              resolvedObj = objectMap.get(varType);
+              if (resolvedObj) console.log(`[PBAnalyzer] dotcall ✔ via varTypeMap: ${fromObject}.${fromMember} → ${targetKey}(=${varType}) → ${resolvedObj.name}.${site.targetMember}`);
+            }
+          } else {
+            console.log(`[PBAnalyzer] dotcall ✔ direto: ${fromObject}.${fromMember} → ${resolvedObj.name}.${site.targetMember}`);
+          }
         }
 
         if (resolvedObj) {
+          const tm = site.targetMember.toLowerCase();
+          const resolvedMember =
+            resolvedObj.functions.find(f  => f.name.toLowerCase() === tm) ||
+            resolvedObj.events.find(e    => e.name.toLowerCase() === tm)  ||
+            resolvedObj.eventStubs?.find(s => s.name.toLowerCase() === tm) ||
+            resolvedObj.prototypes?.find(p => p.name.toLowerCase() === tm);
           crossCalls.push({
             fromObject,
             fromMember,
             toObject: resolvedObj.name,
-            toMember: site.targetMember,
+            toMember: resolvedMember ? resolvedMember.name : site.targetMember,
             callSite: site,
           });
         } else {
           console.log(`[PBAnalyzer] dotcall ✘ ${fromObject}.${fromMember} → ${site.targetObject}.${site.targetMember} — "${site.targetObject}" não no mapa nem em varTypeMap`);
+          // Don't add PB keyword sentinels to unresolved — they can't be loaded as objects
+          if (site.targetObject === '__parent__' || site.targetObject === '__super__') continue;
           unresolved.push({ fromObject, fromMember, ...site });
         }
       }

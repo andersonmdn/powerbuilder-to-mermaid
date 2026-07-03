@@ -383,3 +383,169 @@ header p {
   gap: 16px;
   flex-wrap: wrap;
 }
+
+/* ── Ignore Config ───────────────────────────────────────────────────────── */
+.ignore-config-section textarea {
+  width: 100%;
+  font-family: 'Consolas', 'Fira Code', monospace;
+  font-size: 12px;
+  border: 1px solid #dde1e7;
+  border-radius: 4px;
+  padding: 6px 8px;
+  resize: vertical;
+  background: #f7f8fa;
+  color: #222;
+}
+
+.ignore-config-section textarea:focus {
+  outline: none;
+  border-color: #4a7ef7;
+}
+
+.options-hint {
+  font-size: 12px;
+  color: #888;
+}
+
+.options-hint code {
+  font-family: 'Consolas', 'Fira Code', monospace;
+  background: #f0f2f5;
+  padding: 1px 4px;
+  border-radius: 3px;
+  color: #555;
+}
+
+/* ── Filter Groups ───────────────────────────────────────────────────────── */
+.filter-groups-section { margin-bottom: 14px; }
+
+.filter-groups-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 4px;
+}
+
+.btn-load-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: #f0f2f5;
+  color: #333;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  padding: 5px 12px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background .15s;
+  user-select: none;
+}
+.btn-load-group:hover { background: #e5e8ed; }
+
+.filter-group-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.filter-group-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 7px 10px;
+  border-radius: 5px;
+  background: #f7f8fa;
+  border: 1px solid #e4e7ec;
+  border-left: 3px solid #94a3b8;
+}
+.filter-group-item.fg-active { border-left-color: #22c55e; }
+
+.filter-group-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.filter-group-label input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  accent-color: #4a7ef7;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.fg-name  { font-weight: 600; }
+.fg-desc  { color: #888; font-size: 12px; flex: 1; }
+
+.fg-count {
+  font-size: 11px;
+  color: #4a7ef7;
+  font-weight: 600;
+  background: #eff6ff;
+  padding: 2px 7px;
+  border-radius: 99px;
+  white-space: nowrap;
+}
+
+.fg-remove {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 16px;
+  color: #bbb;
+  padding: 0 2px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+.fg-remove:hover { color: #ef4444; }
+
+/* ── Preset Chips ────────────────────────────────────────────────────────── */
+.filter-presets-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.presets-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: #888;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  white-space: nowrap;
+}
+
+.filter-presets-chips {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.preset-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: #f0f2f5;
+  color: #444;
+  border: 1px solid #d1d5db;
+  border-radius: 99px;
+  padding: 3px 12px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background .12s, border-color .12s, color .12s;
+}
+.preset-chip:hover { background: #e5e8ed; border-color: #b0b8c4; }
+
+.preset-chip.preset-chip-loaded {
+  background: #f0fdf4;
+  color: #15803d;
+  border-color: #86efac;
+  cursor: default;
+}

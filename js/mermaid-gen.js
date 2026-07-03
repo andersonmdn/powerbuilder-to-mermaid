@@ -29,6 +29,7 @@ class MermaidGenerator {
       includeInternalCalls:   options.includeInternalCalls   ?? true,
       includeUnresolvedCalls: options.includeUnresolvedCalls ?? false,
       includeOrphanNodes:     options.includeOrphanNodes     ?? false,
+      ignoredCallTargets:     options.ignoredCallTargets     ?? new Set(),
     };
   }
 
@@ -74,7 +75,10 @@ class MermaidGenerator {
 
     // Cross-object call edges
     if (this._opts.includeCalls) {
-      const callEdges = this._renderCallEdges(project.crossObjectCalls);
+      const _ignored = this._opts.ignoredCallTargets;
+      const _isIgnored = m => _ignored?.size && _ignored.has(m.toLowerCase());
+      const filteredCalls = project.crossObjectCalls.filter(c => !_isIgnored(c.toMember));
+      const callEdges = this._renderCallEdges(filteredCalls);
       if (callEdges.length) {
         lines.push('');
         lines.push(...callEdges);
@@ -92,13 +96,18 @@ class MermaidGenerator {
    * @returns {string} - complete Mermaid flowchart text (call graph)
    */
   generateCallGraph(project) {
-    const calls = this._opts.includeInternalCalls
+    const _ignored = this._opts.ignoredCallTargets;
+    const _isIgnored = m => _ignored?.size && _ignored.has(m.toLowerCase());
+
+    let calls = this._opts.includeInternalCalls
       ? project.crossObjectCalls
       : project.crossObjectCalls.filter(c => c.fromObject !== c.toObject);
+    calls = calls.filter(c => !_isIgnored(c.toMember));
 
-    const unresolvedList = this._opts.includeUnresolvedCalls
+    const unresolvedList = (this._opts.includeUnresolvedCalls
       ? (project.unresolvedCalls || [])
-      : [];
+      : []
+    ).filter(u => !_isIgnored(u.targetMember || ''));
 
     if (!calls.length && !unresolvedList.length) {
       return `flowchart ${this._opts.callGraphDirection}\n    empty["Nenhuma chamada encontrada"]`;
@@ -136,11 +145,13 @@ class MermaidGenerator {
     if (this._opts.includeOrphanNodes) {
       for (const obj of project.objects.values()) {
         for (const func of obj.functions) {
+          if (_isIgnored(func.name)) continue;
           if (!nodesByObj.has(obj.name)) nodesByObj.set(obj.name, new Map());
           const nid = this._nodeId(obj.name, func.name);
           nodesByObj.get(obj.name).set(nid, this._nodeLabel(obj.name, func.name));
         }
         for (const event of obj.events) {
+          if (_isIgnored(event.name)) continue;
           if (!nodesByObj.has(obj.name)) nodesByObj.set(obj.name, new Map());
           const nid = this._nodeId(obj.name, event.name);
           nodesByObj.get(obj.name).set(nid, this._nodeLabel(obj.name, event.name));

@@ -1,0 +1,33 @@
+{
+  "name": "DataStore",
+  "description": "Métodos de DataStore (manipulação de dados não-visual)",
+  "members": [
+    "Retrieve",
+    "Update",
+    "Reset",
+    "RowCount",
+    "GetItem",
+    "SetItem",
+    "DeleteRow",
+    "InsertRow",
+    "SetSort",
+    "Sort",
+    "SetFilter",
+    "SetFocus",
+    "Filter",
+    "Find",
+    "FindRequired",
+    "GetRow",
+    "GroupCalc",
+    "ImportFile",
+    "ImportString",
+    "SaveAs",
+    "GetSQLSelect",
+    "SetSQLSelect",
+    "SetTransObject",
+    "ShareData",
+    "ShareDataOff",
+    "DBErrorCode",
+    "DBErrorMessage"
+  ]
+}

@@ -11,6 +11,7 @@ const App = (() => {
   let _analyzedProject = null;
   let _generatedText = '';
   let _activeTab = 'mermaid';
+  let _filterGroups = [];     // [{ id, name, description, members[], enabled }]
 
   // ─── Init ────────────────────────────────────────────────────────────────────
 
@@ -23,6 +24,9 @@ const App = (() => {
     _bindCopyButton();
     _bindDownloadButton();
     _bindDiagramTypeToggle();
+    _restoreFilterGroups();
+    _bindFilterGroupLoader();
+    _renderPresets();
   }
 
   function _initMermaid() {
@@ -174,6 +178,144 @@ const App = (() => {
     }
   }
 
+  // ─── Filter Groups ────────────────────────────────────────────────────────────
+
+  function _renderPresets() {
+    const row = document.getElementById('filter-presets-row');
+    if (!row) return;
+    const presets = window.FilterPresets;
+    if (!presets || !presets.length) { row.style.display = 'none'; return; }
+
+    const chips = presets.map(p => {
+      const loaded = _filterGroups.some(g => g.name === p.name);
+      return `<button class="preset-chip${loaded ? ' preset-chip-loaded' : ''}"
+                data-preset="${_esc(p.name)}"
+                title="${_esc(p.description)} (${p.members.length} métodos)"
+              >${_esc(p.name)}${loaded ? ' ✓' : ''}</button>`;
+    }).join('');
+
+    row.innerHTML = `<div class="filter-presets-row">
+      <span class="presets-label">Predefinições:</span>
+      <div class="filter-presets-chips">${chips}</div>
+    </div>`;
+
+    row.querySelectorAll('.preset-chip').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const name = btn.dataset.preset;
+        if (_filterGroups.some(g => g.name === name)) return;
+        const preset = presets.find(p => p.name === name);
+        if (!preset) return;
+        _filterGroups.push({
+          id: Date.now() + '_' + Math.random().toString(36).slice(2),
+          name: preset.name,
+          description: preset.description,
+          members: preset.members.slice(),
+          enabled: true,
+        });
+        _saveFilterGroups();
+        _renderFilterGroups();
+        _renderPresets();
+      });
+    });
+  }
+
+  function _restoreFilterGroups() {
+    try {
+      const raw = localStorage.getItem('pb_filter_groups');
+      if (raw) {
+        _filterGroups = JSON.parse(raw);
+        _renderFilterGroups();
+      }
+    } catch { /* dados corrompidos — ignorado */ }
+  }
+
+  function _saveFilterGroups() {
+    localStorage.setItem('pb_filter_groups', JSON.stringify(_filterGroups));
+  }
+
+  function _bindFilterGroupLoader() {
+    const input = document.getElementById('filter-group-input');
+    if (!input) return;
+    input.addEventListener('change', e => {
+      const files = Array.from(e.target.files);
+      input.value = '';
+      if (!files.length) return;
+
+      const promises = files.map(f => new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = ev => {
+          try {
+            const data = JSON.parse(ev.target.result);
+            if (!data.name || !Array.isArray(data.members))
+              return reject(new Error(`${f.name}: requer "name" (string) e "members" (array)`));
+            resolve({
+              id: Date.now() + '_' + Math.random().toString(36).slice(2),
+              name: String(data.name),
+              description: String(data.description || ''),
+              members: data.members.map(m => String(m)),
+              enabled: true,
+            });
+          } catch {
+            reject(new Error(`${f.name}: JSON inválido`));
+          }
+        };
+        reader.onerror = () => reject(new Error(`Falha ao ler ${f.name}`));
+        reader.readAsText(f, 'utf-8');
+      }));
+
+      Promise.allSettled(promises).then(results => {
+        const errors = [];
+        for (const r of results) {
+          if (r.status === 'fulfilled') {
+            const existing = _filterGroups.findIndex(g => g.name === r.value.name);
+            if (existing !== -1) _filterGroups[existing] = r.value;
+            else _filterGroups.push(r.value);
+          } else {
+            errors.push(r.reason.message);
+          }
+        }
+        _saveFilterGroups();
+        _renderFilterGroups();
+        if (errors.length) _showStatus(`Erro: ${errors.join(' | ')}`, 'error');
+      });
+    });
+  }
+
+  function _renderFilterGroups() {
+    const list = document.getElementById('filter-group-list');
+    if (!list) return;
+    if (!_filterGroups.length) { list.innerHTML = ''; return; }
+
+    list.innerHTML = _filterGroups.map((g, i) => `
+      <div class="filter-group-item ${g.enabled ? 'fg-active' : 'fg-inactive'}" data-index="${i}">
+        <label class="filter-group-label">
+          <input type="checkbox" class="fg-checkbox" data-index="${i}" ${g.enabled ? 'checked' : ''}>
+          <span class="fg-name">${_esc(g.name)}</span>
+          ${g.description ? `<span class="fg-desc">${_esc(g.description)}</span>` : ''}
+          <span class="fg-count">${g.members.length} métodos</span>
+        </label>
+        <button class="fg-remove" data-index="${i}" title="Remover grupo">×</button>
+      </div>`).join('');
+
+    list.querySelectorAll('.fg-checkbox').forEach(cb => {
+      cb.addEventListener('change', () => {
+        const i = +cb.dataset.index;
+        _filterGroups[i].enabled = cb.checked;
+        _saveFilterGroups();
+        _renderFilterGroups();
+      });
+    });
+
+    list.querySelectorAll('.fg-remove').forEach(btn => {
+      btn.addEventListener('click', () => {
+        _filterGroups.splice(+btn.dataset.index, 1);
+        _saveFilterGroups();
+        _renderFilterGroups();
+        _renderPresets();
+      });
+    });
+  }
+
   // ─── Options ──────────────────────────────────────────────────────────────────
 
   function _getOptions() {
@@ -185,6 +327,25 @@ const App = (() => {
       const el = document.querySelector(`input[name="${name}"]:checked`);
       return el ? el.value : null;
     };
+    const ignoredCallTargets = (() => {
+      const targets = new Set();
+      // Grupos carregados via JSON
+      for (const group of _filterGroups) {
+        if (group.enabled)
+          group.members.forEach(m => targets.add(m.toLowerCase()));
+      }
+      // Adições manuais no textarea
+      const raw = document.getElementById('opt-ignore-json')?.value?.trim();
+      if (raw) {
+        try {
+          const cfg = JSON.parse(raw);
+          if (Array.isArray(cfg.ignoredCallTargets))
+            cfg.ignoredCallTargets.forEach(t => targets.add(String(t).toLowerCase()));
+        } catch { /* JSON inválido — ignorado silenciosamente */ }
+      }
+      return targets;
+    })();
+
     return {
       includeVariables:   checked('opt-variables'),
       includeControls:    checked('opt-controls'),
@@ -197,6 +358,7 @@ const App = (() => {
       includeInternalCalls:   checked('opt-cg-internal'),
       includeUnresolvedCalls: checked('opt-cg-unresolved'),
       includeOrphanNodes:     checked('opt-cg-orphans'),
+      ignoredCallTargets,
     };
   }
 
